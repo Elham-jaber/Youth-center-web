@@ -1,0 +1,1409 @@
+-- phpMyAdmin SQL Dump
+-- version 5.2.1deb1+deb12u1
+-- https://www.phpmyadmin.net/
+--
+-- Hôte : localhost:3306
+-- Généré le : mar. 02 déc. 2025 à 14:44
+-- Version du serveur : 10.11.11-MariaDB-0+deb12u1-log
+-- Version de PHP : 8.2.29
+
+SET SQL_MODE = "NO_AUTO_VALUE_ON_ZERO";
+START TRANSACTION;
+SET time_zone = "+00:00";
+
+
+/*!40101 SET @OLD_CHARACTER_SET_CLIENT=@@CHARACTER_SET_CLIENT */;
+/*!40101 SET @OLD_CHARACTER_SET_RESULTS=@@CHARACTER_SET_RESULTS */;
+/*!40101 SET @OLD_COLLATION_CONNECTION=@@COLLATION_CONNECTION */;
+/*!40101 SET NAMES utf8mb4 */;
+
+--
+-- Base de données : `e22110297_db1`
+--
+
+DELIMITER $$
+--
+-- Procédures
+--
+CREATE DEFINER=`e22110297sql`@`%` PROCEDURE `ajout_par` (IN `p_cpt_id` INT, IN `p_res_id` INT, IN `p_date` DATE, IN `p_heure` TIME, IN `p_nom` VARCHAR(100), IN `p_ress_id` INT, IN `p_role` CHAR(1))   BEGIN
+    DECLARE v_res_id INT DEFAULT 0;
+
+    -- Vérifier si la réservation existe déjà
+    SELECT res_id 
+    INTO v_res_id
+    FROM t_reservation_res
+    WHERE res_date = p_date 
+      AND res_heure = p_heure 
+      AND ress_id = p_ress_id
+    LIMIT 1;
+
+    -- Si elle n’existe pas, on la crée
+    IF  v_res_id = 0 THEN
+        INSERT INTO t_reservation_res(res_date, res_heure, res_nom, res_etat, ress_id)
+        VALUES (p_date, p_heure, p_nom, 'A', p_ress_id);
+    END IF;
+
+    -- Ajouter la participation (responsable ou participant)
+    INSERT INTO t_inscription_ins(cpt_id, res_id, ins_date, ins_role)
+    VALUES (p_cpt_id, v_res_id, CURDATE(), p_role);
+
+END$$
+
+CREATE DEFINER=`e22110297sql`@`%` PROCEDURE `insert_doc` (IN `ID` INT)   BEGIN
+   DECLARE present INT DEFAULT 0;
+   DECLARE nbp INT DEFAULT 0;
+   DECLARE titrerei VARCHAR(100);
+
+   SELECT COUNT(*) INTO present 
+   FROM t_document_doc 
+   WHERE reu_id = ID;
+
+   SELECT COUNT(cpt_id) INTO nbp 
+   FROM t_participation_par 
+   WHERE reu_id = ID;
+
+ 
+   SELECT reu_titre INTO titrerei 
+   FROM t_reunion_reu 
+   WHERE reu_id = ID 
+   LIMIT 1;
+
+   IF present = 0 THEN
+       INSERT INTO t_document_doc (doc_id, doc_titre, doc_text, doc_chemin, reu_id)
+       VALUES (NULL, CONCAT('CR', titrerei, nbp), CONCAT('CR', titrerei, nbp), 'CR en attente', ID);
+   ELSE 
+       UPDATE t_document_doc 
+       SET doc_titre = CONCAT('CR', titrerei, ' ', nbp)
+       WHERE reu_id = ID;
+   END IF;
+END$$
+
+CREATE DEFINER=`e22110297sql`@`%` PROCEDURE `ressource_exister` (IN `nom_ress` VARCHAR(255))   BEGIN
+    SELECT COUNT(*) AS total
+    FROM t_ressource_ress
+    WHERE ress_nom = nom_ress;
+END$$
+
+--
+-- Fonctions
+--
+CREATE DEFINER=`e22110297sql`@`%` FUNCTION `liste_mail` (`id` INT) RETURNS VARCHAR(1000) CHARSET utf8mb4 COLLATE utf8mb4_general_ci DETERMINISTIC BEGIN
+    DECLARE resultat INT;
+    DECLARE resultat1 INT;
+    DECLARE liste VARCHAR(1000);
+
+
+    SELECT COUNT(reu_id) INTO resultat 
+    FROM t_reunion_reu 
+    WHERE reu_id = id;
+
+    IF resultat = 0 THEN
+        RETURN '-1'; 
+    END IF;
+    
+    SELECT COUNT(reu_id) INTO resultat1
+    FROM t_participation_par
+    WHERE reu_id = id;
+
+    IF resultat1 = 0 THEN
+        RETURN '-1';
+    END IF;
+   
+    SELECT GROUP_CONCAT(pfl_email SEPARATOR ', ')
+    INTO liste
+    FROM t_profil_pfl 
+    JOIN t_compte_cpt USING (cpt_id)
+    JOIN t_participation_par USING (cpt_id)
+    WHERE reu_id = id;
+
+    RETURN liste;
+END$$
+
+CREATE DEFINER=`e22110297sql`@`%` FUNCTION `nb_inscrits` (`id` INT) RETURNS INT(11) DETERMINISTIC BEGIN
+    DECLARE resultat INT;
+
+   
+    SELECT COUNT(*) INTO resultat 
+    FROM t_reunion_reu 
+    WHERE reu_id = id;
+
+    IF resultat = 0 THEN
+        RETURN -1; 
+    END IF;
+
+    SELECT COUNT(*) INTO resultat
+    FROM t_participation_par
+    WHERE reu_id = id;
+
+    RETURN resultat;
+END$$
+
+CREATE DEFINER=`e22110297sql`@`%` FUNCTION `nb_reservations` (`jour` DATE) RETURNS INT(11) DETERMINISTIC BEGIN
+    RETURN (
+        SELECT COUNT(*) 
+        FROM t_reservation_res 
+        WHERE DATE(res_date) = DATE(jour)
+    );
+END$$
+
+DELIMITER ;
+
+-- --------------------------------------------------------
+
+--
+-- Doublure de structure pour la vue `comptes_actifs`
+-- (Voir ci-dessous la vue réelle)
+--
+CREATE TABLE `comptes_actifs` (
+`cpt_id` int(11)
+,`cpt_mot_de_passe` char(128)
+,`cpt_pseudo` varchar(45)
+,`cpt_etat` char(1)
+);
+
+-- --------------------------------------------------------
+
+--
+-- Structure de la table `t_actualite_actu`
+--
+
+CREATE TABLE `t_actualite_actu` (
+  `actu_id` int(11) NOT NULL,
+  `actu_contenu` varchar(600) DEFAULT NULL,
+  `actu_image` varchar(250) NOT NULL,
+  `actu_titre` varchar(100) NOT NULL,
+  `actu_etat` char(1) NOT NULL,
+  `actu_date` datetime NOT NULL,
+  `cpt_id` int(11) NOT NULL
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
+
+--
+-- Déchargement des données de la table `t_actualite_actu`
+--
+
+INSERT INTO `t_actualite_actu` (`actu_id`, `actu_contenu`, `actu_image`, `actu_titre`, `actu_etat`, `actu_date`, `cpt_id`) VALUES
+(1, 'NOUVELLE machine de sport est mise en place dans la Salle de Sport : venez tester la nouvelle presse à cuisses.', 'machine_sport.jpg', 'Nouvelle machine : Salle de Sport', 'A', '2025-09-12 03:00:00', 93),
+(2, 'La Maison des Jeunes lance un nouvel atelier de cuisine hebdomadaire pour apprendre des recettes équilibrées.', 'atelier_cuisine.jpg', 'Atelier cuisine : inscriptions ouvertes', 'A', '2025-09-21 02:00:00', 129),
+(3, 'Mise à jour de la Salle Informatique : 10 nouveaux PC et un vidéoprojecteur sont disponibles.', 'pc_informatique.jpg', 'Salle Informatique : nouveaux équipements', 'A', '2025-08-27 02:00:00', 56),
+(4, 'La Salle de Danse accueille un stage intensif de danse contemporaine ce week-end.', 'danse_stage.jpg', 'Stage danse contemporaine', 'A', '2025-09-24 08:00:00', 64),
+(5, 'Offre spéciale rentrée : adhésion à tarif réduit pour les 18-25 ans pendant un mois.', 'offre_adhesion.jpg', 'Offre adhésion rentrée', 'A', '2025-09-05 06:00:00', 166),
+(6, 'Une sono professionnelle a été installée dans la Salle Polyvalente pour améliorer les événements.', 'sono.jpg', 'Sono pro dans la Salle Polyvalente', 'A', '2025-09-01 06:00:00', 80),
+(7, 'Appel à bénévoles : la Maison des Jeunes recrute pour l\'atelier multimédia et l\'accueil.', 'benevolat.jpg', 'Appel à bénévoles - multimédia', 'A', '2025-08-06 12:00:00', 33),
+(8, 'NOUVELLE machine cardio ajoutée à la Salle de Sport : rameur dernière génération disponible.', 'rameur.jpg', 'Rameur disponible', 'D', '2025-09-27 06:00:00', 182),
+(9, 'Atelier musique : nouveaux instruments (guitare, clavier) sont désormais à disposition.', 'instruments.jpg', 'Instruments disponibles', 'A', '2025-08-12 00:00:00', 122),
+(10, 'Sécurité et horaires : mise à jour des règles d\'utilisation des salles, consultez le règlement.', 'regles.jpg', 'Mise à jour du règlement', 'A', '2025-08-23 05:00:00', 1);
+
+-- --------------------------------------------------------
+
+--
+-- Structure de la table `t_assosiaction_asso`
+--
+
+CREATE TABLE `t_assosiaction_asso` (
+  `ress_id` int(11) NOT NULL,
+  `indis_id` int(11) NOT NULL
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
+
+--
+-- Déchargement des données de la table `t_assosiaction_asso`
+--
+
+INSERT INTO `t_assosiaction_asso` (`ress_id`, `indis_id`) VALUES
+(1, 1),
+(1, 7),
+(2, 2),
+(2, 8),
+(3, 3),
+(3, 9),
+(6, 6);
+
+-- --------------------------------------------------------
+
+--
+-- Structure de la table `t_compte_cpt`
+--
+
+CREATE TABLE `t_compte_cpt` (
+  `cpt_id` int(11) NOT NULL,
+  `cpt_mot_de_passe` char(128) CHARACTER SET utf8mb3 COLLATE utf8mb3_bin NOT NULL,
+  `cpt_pseudo` varchar(45) NOT NULL,
+  `cpt_etat` char(1) NOT NULL
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
+
+--
+-- Déchargement des données de la table `t_compte_cpt`
+--
+
+INSERT INTO `t_compte_cpt` (`cpt_id`, `cpt_mot_de_passe`, `cpt_pseudo`, `cpt_etat`) VALUES
+(1, 'tristan12369', 'tristan164', 'A'),
+(2, 'ba171dcdf739132dba43a53f5f19f9d9cd0d2f615bf525381d09dac537ad16d1adef545ffadcac6f36e2c64a3155bd3fe550e34265610d0b7fca10a176b21242', 'henri59', 'A'),
+(3, '60776ca5a5f82563c2ce03f989babe3c99c0ef39f30f21675dfe94bbf192b20215527725315fd5344a56d848af5dc955f8c4ce9ac2e0ea943561a71718c21d35', 'ana558', 'A'),
+(4, 'e5ea5ecdefafa8b5feff4ac4f87daad674415570e70cbd226af054785418ef99cee2469655a781dc5874da390b4e2b9f2dc1fcaecd3df433aded1a28c1c5ca60', 'man606', 'A'),
+(5, '33e13e60c20fd17a1c04c05202eeb4cd1bc72e74c765fac3e37ddec4210dc4431b18df582d1d07e40c65026bab918d62fc35cd4e0c9a9d087c6473332598eb52', 'ben529', 'A'),
+(6, 'b72c5ec9b3532e9e58bec2039fdd90d19c5f4e995ffc6c9fafee49c74c7cba71cca26859b5751f3f3e8c7c60ca47c2854b1ba3469a7e7e6cdec3cdfafea8f2a7', 'david98', 'A'),
+(7, 'cae26d0571bd1f74ae96cb1c66263ef44643a4d7a9acf1e4d825810628f52dd9bbc29f4cf21b9e0e32c2733f12fb8e76464246d7b7ff6ca02294163fa5f85578', 'valentine81', 'A'),
+(8, '3e168f92c5759d999e73e00ce1d552f1f291e262b8183d3b6881b52b1811664f55c9011b24ba0d59832156f3ecd25cf6e0226121c14820f4bea5bf5292db3c41', 'elise574', 'A'),
+(9, 'd9f846b2a217b3b8c12bd61323cb3e5ae95934bc80fa4b98f2108be5bcfbf35723695d0a3a00311cefc2d4cbfc62b3021b75da3c0917857e593e9897db58a8d1', 'etienne856', 'A'),
+(10, '55aa2260d24c5c93b00d1a96af0bbe1188b72aa38b43d713a7a875d420a2c83178a8ee50781901e8f79294d059b2995e43826ecdae192ba809aeee3e8d5e226a', 'aimee980', 'A'),
+(11, 'dd696ac7f40ba4c093fc0eaf8afd87ca2d589e33daffa195ed2621c6a1ed64d24a636a3f9b2d2a255034a4508edc678a5dc437f0fbc6ed080a7c1507d0a5291c', 'isabelle652', 'A'),
+(12, '8db1f432c8ea6e3571137e9611e41f7528c710546a98ad24560a3d0e33c27ab1f9002994649de80b0dbc2f8a66fc03e9dd34691aefaa9d710b3bd1b69112c2a1', 'bertrand73', 'A'),
+(13, 'e9bda912a2c8baf8ee1b49919dbe1df25adc6c6ba53f9809e9d2ade7b76212cfcf9975bab3beb61c2b104bcc4f9a31a30366e0853aed1daf9a481b65abfc656b', 'corinne416', 'A'),
+(14, '4611ee758e5228c6a7ec1e66825acf612774c1d952d275f489042b046413b6271b7c5e5772ea99c4b4f61fb84bbfbf49b7d4e551c328bd1587ce4201c224d67d', 'mar236', 'A'),
+(15, '869e1a74c31760b9b628df06526397f00b4ccb0236a633162a0370195a03a28df004486048aca61dd7528811d5a3d638a9fd4b71328f5446769c3c0924f89fd0', 'aug889', 'A'),
+(16, 'c4250f2aaab336e41d72f063bdd10670a7679c6ccf4fae1eb18aeee14447a7da7291aa18d4bab18df5287b4129d17019a126f63e402ed44b15b799e969f84c63', 'emm439', 'A'),
+(17, '0d76d6a882b37e0a6b70656a06c7df204f962f0de24d24b7b2095602cf7df4af6d431f6335e3b7980977fdbf98b9b443c6aa84fd13f08c167bcdc75135f4dfb5', 'ber130', 'A'),
+(18, '70cdf3f4a148b8d121550a30a5a694c68f036d585c7bdab012e0922ecee50661fb5e23c413d554d8a2476e44a4d04e3cbe57615a1d2fdd67fb0e806839b3b441', 'astrid583', 'A'),
+(19, '0b639ea0709b7c9121b08593f5d2ad8d0f4ad579be13160bf6cbda158280e14db620bed9267bf96ecb2e75251e47950a0c309751eaac06e7fea7fd83a73640fb', 'daniel195', 'A'),
+(20, '78f3865fee6ef0c88b8eb2f3046c9ac775d7f9cdaf546fe184b85a6dea978b596454a4a99b717fb4d4905505c694aa45e4c010db5283e6639f3a3409685147d8', 'oli594', 'A'),
+(21, '128141147b0b5e26ae4bbe67b3328d4d546299d45a2f02988640a42db1ac9d580b455e40caba8f86eecf1d89d5241375d23906df33c4fc255a77071437114e59', 'eric391', 'A'),
+(22, '9c93537f8b7f027efeb3345c23d0bf49809e08529623751b03c09a9414b1b2d95216c05525b1ebdb95b6e6eefe17d5218a06898845327c7b28bf9718c684c5a5', 'fra739', 'A'),
+(23, 'badb9d3c987a567179946de12f4d72727b9a2dcb6537fc1bff36b0014cf35cc571d6a365241baaed27e4d489d540af5faa8811293c87670ae4ce2d2f0ad2fd6c', 'aud71', 'A'),
+(24, 'a672159942d781a9859acaf254d8c27f26fdeb21c771ade87c0878778f2f4c73b12b67cd81ffa955f003bc8d17b060553bb3f19a5651e268d73ff698ef1b2431', 'charles518', 'A'),
+(25, 'eeb0e322b84c1990e318452aa5f0aa9d4d34c2ffa861ed86c860b20c0e605fc61fc2722e20538ef1110c3522b003fb5e969813cf1ca82cd449153f557d78431d', 'valerie447', 'D'),
+(26, '4f8bbdb0183722808bb3eddcb740e3ca61e9d98e020c7aba2491664bf621f2c491ae121af25fb3a0c60673292cf2a746d854a5328571a64c0640df72dd383df6', 'genevieve486', 'A'),
+(27, 'b187698f75da297231e88e8c1780e9071a2d0ac272888fb5c5b29ab7e3600b2b2a622255815402df551aa6973ea54f03ea08f9fe0bcc2653f20b08e399204d43', 'gerard474', 'A'),
+(28, '7cadba136a4c8b3d8f09384bb8c1e2e265e5bed445460e90f32112d4e3d495f5338846002ffe00767e1bc345aad9e9568c030ad1a26fd0731a16587293660147', 'maurice264', 'A'),
+(29, '5c654ad9ffc7d0f12ee513928ca7c21fe95a421fcbc594519d9e3504cbce9a1d99b192bc5761b3004dd7854b27ef8a8d6faf8290f2852b2b307e034477f8d26c', 'louise725', 'A'),
+(30, '368445bd6e4de73a12d7bad13c0c5ecacccde042d2dd65bfd3f6172c00f36e1702ea4b8224463647f35ba4d8179052330dc6c1f09607c1ffbdf63f6a51e7a443', 'lorraine93', 'A'),
+(31, '8297fe1f07e4b6f719524b623232737084667d77b2b76a12ee313457f633ed53fdf97eb38b1e6721dcbab58ca4c583fa7526b4d7b318e9fce8d9a6fd90df45ba', 'isabelle547', 'A'),
+(32, '107c2a79dc08469be9aceb0cbc2b5b31fc5e75833422a6f3df6253a0abe10bd73d53d6a1b3f24754cc89c86a4c51d2c3f78ac5fdbe291bf06c938d454d811f55', 'charles361', 'A'),
+(33, '53ba855c43f5427bc35c9770d3c2081e6695e27b0ec92f50edda58bfb2bc065b24eb28cab6e384aa4f3f1de031589fdb3f7016c98cd60c6d47ff24fb47e1e4c7', 'hortense304', 'A'),
+(34, '16ada6ed92a4f4956d7c435419ce642ada0b056b614857f81b653217660161f5715464c9478752c5184e11490a67c2c035dbc35eb328e58ac74db12df46ef269', 'isabelle84', 'A'),
+(35, 'c92046bb0f08cd9a6a53800a295f963de3efd6d5418bbe56b3c91b16801c8bf7e9940682c8b71bcf4068740799989ff0b3cd506167ed6abb3ec282fe7d7027cf', 'ana438', 'A'),
+(36, '9959a02ecbd08c899931467997a6bff4a182c6cbfcb1365deeb2963e56a513239dbd5e657173152dc04dcf1d859c7be7d2abd1bc60fbb9377ab5e95eaff13f72', 'benoit360', 'D'),
+(37, 'da87111c14c4376b9b4b98733c6d4b52557e44397216d028d5e743c69aae65aef5fc576bdcce8a42ee37c9baf0aea6b6d0e54e8f81024bdaed9cf904673325cc', 'matthieu510', 'D'),
+(38, 'ed7a883642be3e4d16775124f57334b9bee581206de4e2e3509a150f0f2e3e62e5092058bc77b94bbee36f47ddd091b6039575b00a93f15242c797ff7ddbc603', 'benjamin995', 'A'),
+(39, '3aeb7e08f6aea96e8ff1608ce5bc9d915af87c8927a910806d732ae2f7f437e9aa4dd740167fc377971223f0fd267fee8a483f762952b851b4f02167aa35ade1', 'frederique792', 'A'),
+(40, 'b0b9c87fd751cbc826411734e78953aafd5d0faf417fe5ca444d636b59f689e5685eb6b09d2ac8be2bbc5fc2acaf3dec030108a4a8f51004b53967554d917d14', 'gregoire818', 'A'),
+(41, '5a86144c44c0742de1744fd6bb868cc2dce9b6ef83d20e97dae099374267738f3ea48a42f7e09200a030de831611f0aeee35de730d83fda808979abe44c5e404', 'stephane331', 'A'),
+(42, 'e632bca96272f5f1f078abaff9b07e0ac49edce2030e5a16ae6187af26200182efb74f5177a1abc7b5c9435d3410b0429ad1c0887af09e27c3aee219b7f476e6', 'astrid368', 'D'),
+(43, '686b080910f111f4fb64ae1c0a5ff26bdc4911c33b0e87986b3055c3494aee3f46fae92091d567adc281c9917f4397f1f5ab5023332942557ffe6c788757aaea', 'guy603', 'A'),
+(44, 'ef5ef56c8313cc873ce121da092070aff31eb1525fbc84cf9659d85b1f9fb627c0e411b0e7fd2c4bd599ed6bb6f887f52bafae7c368bb360b021965358e79857', 'elodie80', 'A'),
+(45, 'cc2e0cdd253128568e1aecc0757246106b43f71148315e76456aa05781a3a7c04cd54284a0499476b73792310c590069b0c9ed9880e0f08bc63c82b6ca07d5eb', 'georges977', 'A'),
+(46, '95ddafd33c239b277362a6a759bdd5366fedcc194fd43aeb224f6fb3306a6dd35b5438a688209f2e7c60d7bd54993977723cd98b035cead3c041171800b88868', 'henriette723', 'A'),
+(47, '8f808f52db9407897c943b1bef51fc04629bff7bea1b5f763236d9e2a2f762ed2758d613986c479c1393cce36f4076714b53d10b8668386dce82ee1cb8bd60df', 'thibault72', 'A'),
+(48, '0d86e5055aabb2576718ca9dee8ac95174869bbca3384f4257275e8f98032032439aaadbf8fcc0a09c49a7ead2981a7c39dbd3786aa89074a2a05b45f02c3d31', 'gabrielle327', 'A'),
+(49, '77f43b07b7a2f3e2d7ab0d24e05965bc72b6534005078900a91362d8e2549d2b2a2c09427c9b453ca9f0f6e250d616de194c7e66a71b3e6ed65f935d75f1dbc4', 'sylvie707', 'A'),
+(50, '69417fad53323d2d30762bea5cb63ae17f02cd7d8ba8088157891dd4a363e16b6af5ffb542b7887e1105497d3a56678f41bcfdf8724b15d18d13c65f78d50e47', 'maggie301', 'A'),
+(51, '9936a78efdbbbb9a3038ed46277e50e08d581212b01f0ae4d6e997a1ebc0e04ebeebf394dc504cbc79923b265c0c97e7caca90737313a8023af6715794c6847f', 'jules918', 'A'),
+(52, 'f9a408a998287007632a95dfd32d02b14d50d277f5fb9e597157986bec4e2e817f3f2534ab3ef8f0a5985006ae875768e13eec8c8dc004a8294db803e03740fe', 'francois33', 'A'),
+(53, '123f48450042d0cd5680694116e079745e6a848139f6caaac93d174b75f55fc629181d6772ec25ff9872ff62ee0b42cf09e525d722096617f71b4cf60ab6202b', 'ines373', 'A'),
+(54, 'd30a3fe163e81ea2dce8be16eb04cb54fe26b098cc50e853e1af7e02e36e2e3f17f0310d2ca5b6cf7da0bbc1c8bd927c57b1bba357b7e484d492aa020f4a43ac', 'henriette129', 'A'),
+(55, '12224bed6af8212ce2424d6ce633a0ef6b14aa8e37229641f445b5d62532da140df0557bddc4338b68d6ae87dd48d28beee04413bed52cde82da5a866923cd2d', 'lucie233', 'A'),
+(56, 'e0393dd123b87a72b7ec775d1fef9a7599ed6a8a59af4a9b1dffafc12e78dfcf430a566dc9ca8a620180e270392a7cea02a14eca4a9b44146da9c8985953bdb4', 'laurent142', 'A'),
+(57, '71ac40306c5473d351e32ee9e9430d9a4f1f315ed31620f961a01c8268fa2fd22df151b580538e37a908f558c64e90faaa3c0b91b3c5bfc65dcfef0fe1cceb8c', 'alix417', 'D'),
+(58, '7071d3df63a91724bc0a27dd81e32697674cc27c3ac530137786440b58df4ca93109d48af213e62d31ba8e769faaa051b82ee9cf83913a347678f21ffd0e1043', 'etienne902', 'D'),
+(59, '40cbcfc2c1198e4f3b7d54545cdaecb35f0c950efa10325398b285574940dccfae07f0ee356be12bffba9f97522a6fbe28b3f9a5772e08d55885f175d580ab9c', 'emmanuelle180', 'A'),
+(60, '15c25341d37e8c8ba7f77ba4f7fecaf4f2b3e2c49437766344cee02664ecd57a7f100d7771833f41c15324b325beb69a08c0f9bb8650ef0565aedb336cb45e12', 'michele572', 'A'),
+(61, '8ad1937365d9c7020836a2a92f0e9de97d9c61d990aef01ad89c7d072a5210d3d32c646b4e87ca041e7a1274f0b5c0524b01baae18a5fe3746f2db8a305eaf6a', 'christophe150', 'A'),
+(62, '7d58957e67da3fb20a64c427cb93d913176af165f28e20b2c572e25417891c53fd33b7e8659cc1594cb371160ce6c55f96fe36adf2a462303f0916a5b56d6ff8', 'genevieve894', 'A'),
+(63, '57ef102870758d8ef48d1643d9ab30f6f689760931cea73bcadbbb6ba24031c4d3567530c7cf9a8512be441faacba412797b5fb1e76e91a34c2262723ac36dbb', 'charles733', 'A'),
+(64, '6cfcf4b8fb2520be36dc3e1f2f8de05b1c865e81da00808f852c67cf34462d374fb5cec00c0780844e0779f8dbd36a38e900dda275fc2014bf4d7e6cebc852bd', 'laure377', 'A'),
+(65, '4e8e4950a14790098a94b7e81619a4bbdb882ff33de5b816e3ad9087bd674f6a6788d9bebdc6fe5b3a79707ba85289695fd777bdd3b4de11a47a2b0094f15e24', 'lucas399', 'D'),
+(66, 'cbb5347b2d6638d40e68e5e210119c81b4990c8d0db127cf622d16920f99eb69f959ad60eaa6a60bf24ea385853ca9edabc7be3af147d6b4df26bd593cc6fcac', 'colette164', 'A'),
+(67, 'f96983884d6e49534af3eaf3c147dd4ceaed0dacdf848d97152bec8006a62ac8897fe2b945696628aed99be9a620e7d0b87d91001eaf72fadff4a21439027c72', 'mag164', 'A'),
+(68, '06e24175879ded9a8cd0ff372e1689701b4fc3a578dc3a56b481418bbc9c5d3ab4612bee7821e077cf6ef071d0b5f91f328e74da1f397f948a1e34ba58ac4d20', 'elisabeth248', 'A'),
+(69, '07f5afae46f298c6acf2d4e073f7f3f260df641eaee772144949c9f15e08e0f13c034c7c8eee5a059e5700cbc73e957a77e258d60fa168a34513d1a5c4d3e194', 'aur861', 'A'),
+(70, '3206b6970bf0ec1ca3b6f06ba405339a09a752d61435fa339c1ac35cc39512caf8f019c138a8ee600a2a01731d131fdd1b399239c0769cd6f948cc1daf746b6f', 'philippine279', 'A'),
+(71, '8dcb9a75855b6115a653d535f911e3c95357309882080f8b2fd0957dbb336cc3fa34bb9bb609d6119b76f06603858c52115297fce3237e431a12a98d5f7233a4', 'thomas159', 'A'),
+(72, '9a18022139cd6caa672818ef6af3f01234357e80ce597936abdc0053b2cbeed40f132fa04945dbc7a48a1a17c7ec4fdc0c7301818a0fc37c551e3fbcf82a53e8', 'chantal388', 'A'),
+(73, '468645bd43a35ee6d29407284118b147d04516556b7b3d54acbf723c12563b6f6ec395157550029d181ebfae255f65ff7ab28b2fd4dd5d120c692cf842e6441e', 'isabelle336', 'A'),
+(74, '57333ee60253856fca609e0d9f3b76ef3d3ad21f34fd6cb737f1e879bd941ba69faaf3b5de649f9a1419b4d614bc99bb9e20fa402a1c3594d3011bfd7da7633a', 'cecile717', 'A'),
+(75, 'efeb508d2359468e082c0fe188115c84728bf6be68997ba50d1f4ad0d4626107e70a830bfc92924f7d0f775d0e8873a9b1f650a04c6b482287b808e47c523004', 'agnes983', 'A'),
+(76, '0b8d3dc709542eba42e6b0bb9feb3d9c8dd139565a1bfb887f77fd110599ada7d29b77d7b2bec19bc887e2ebb626cce5a2254be5984ef23eaa901cfcb7c36c72', 'theophile702', 'A'),
+(77, 'f67ecf21b2ae516d36fedfc7e8951a702ecbb8ca6f7d2416ccc2af55e7ae0c3392f0c258ac58a6457729aa39b36f13f21f06465dbec9c8770cbfa1c21f9bd3f6', 'paul477', 'A'),
+(78, 'd02b65d28dae802f322a8ffde44abd94eaa94ec24660b5c257ba4e1a0cf37fde9dbe2aa888119360feeed301f5d01dfcee9a131fb517d635727312fe257bd59e', 'stephanie808', 'A'),
+(79, '322970f99993f5faa92fc35d6cef9ed04c628a0f99438e6f558441f478ce3bcc91f9ff6c744f2d424909978931c174652a46d274ad52738d8afc10c2490b078c', 'jules706', 'A'),
+(80, '545836be88b687cb76d4d34f2af0b2c138703dfb89d4c071c61603147fbc05eb8f7baecc5c738cdd4deb5a4b16ef1f7c85a8b3fe2df71635c5435599a30abd75', 'marthe411', 'A'),
+(81, '1580cdccfbd596d28953a86bbc9f6d17468008ba784e2612d1639d8172596a3eff6eff99a16723727eeaf280d6312ac95dc524b36b1546ead92a1f6f24acfcf2', 'renee413', 'A'),
+(82, 'df0e0bacb0881cbdf5f0c660b52cb58608f9a50065ba85bac0ae0dde4f865b6ef0588ac43495abb674ea1db6d19bdf7da41874e719835a2b420141aeb8a050b6', 'pat659', 'A'),
+(83, '6f2f1ecbf127c721910aaa7ec2b12040f338dfbb4c11ca3406a65de1badc5f5a5bdf8ea0b891a09d6558ed4a078bcfe8439f35caeeaec718c63f059868ee8b9c', 'edouard205', 'A'),
+(84, 'eb1f58c7e43d186670837dd466da11cb5b8e6d90438a8b9b0b4b0a0b54058a2fa8c7a97daf1407086d8cd0c3db3c38ce586fe70adcbda06f50fa9ec8f49e8ab7', 'hor223', 'A'),
+(85, '34698d32d53158dde6abbf28506e43125cfa35036e08929b9ecce8761745a4d79fdd3f2bfe96696e2a14b3489f6d6a1927f772c8b9bf570931a5d2659549fa7d', 'theophile122', 'A'),
+(86, 'ad8fe80be49602e55437fa8d430a4b63febd34a6a701847f1ecbf7c5f86030349f3022bf8e88c48a533676fb777e005f0b5816e2b3439a657a40606b7ed34704', 'edith63', 'A'),
+(87, 'c2a9e8713054e39f7afec15f4b58aaede13539f03657b498613df5110c86a233b17fc3be53a276b86d44becd8097bdc65f2306f6abd6416992d59e7df78f0eb6', 'cle590', 'D'),
+(88, 'c77df6aacdb414b3d58e42ac832487d410c8c39b2567e16b3315008df218fc51654bfb3aad890ff2c4074908315ddf462cdeaef8c50567adbffd65b815013e8e', 'zacharie113', 'A'),
+(89, '8e4dd6d98c67653f5b0e76c5df1151f42caf500e78dee3e481ec9d171ac5054342669b233ca03cbe92f03abc13f5de2d834b2ea3d7c9bbe9f267371de286726e', 'nathalie638', 'A'),
+(90, '2c09b18a4c8d69e88e7d9c0646b09bc2b401516a85910ed98990ba8a6f4b859734abd6cc7fcec7147cf8a86d4d49f8e1909b8a7ac550825c201932e4c0559270', 'car905', 'A'),
+(91, 'ce8e257205a68b3d4dfb773c7f1830b59c86e297ead964775ac6ea6999597df1dd98c8bc7731e564dc3a7b9b5387b08d9e4d3ff53c4145a5b37f7a3b725d14b7', 'sebastien395', 'A'),
+(92, 'd470f0fd13d132b8536e1e7f716295fe39b4a8b4879138298c87b1e7691e97ce23723d3fec445f9f6c0688173d0aed99bb50bb3c56d0a90d566925572a41583f', 'jul268', 'A'),
+(93, '39cafa908097cf2a0b1cf02ef6022fb2f61c5da099b8664835473e1c58c4a39b3fe1f75a64a31e92fef0a3e0d51bf3870ba535b22494d5d37d0142ebc8f9b070', 'david626', 'A'),
+(94, '64e8eaec4f6fa18f1e31c02b49e5355bddbbba1d22603d21f843790a8e9f924eb0fec805d34ca496ed3e3eabf8233e3643d40c7bb145e32fed5a536513725167', 'georges135', 'D'),
+(95, '90ea1378fc067e4b021ded7e86566b203552537eec2d273608f1b24f84f843924df42526d0dd92ba98e563c2da8aa10c4908677478cefcaed6718c2a0351fa36', 'den509', 'A'),
+(96, '40b83ef4d23bc2fbecfad4681f8d4bcc11e886fd3ef28e9025909b6856557806c175a56be625f298b70d58c601a5dc2f10f2c1b760bd377edd3f24eb2a233428', 'astrid487', 'A'),
+(97, '84da78a84a58daa6b01e47cc44a8b9da0cb236a88ccfba0261b06cdb242739911371c9d7056783349e68546156a1b77e6285374b0cf8fcd39091953604714384', 'jacques329', 'A'),
+(98, '48786f6dc0f56a207b6f9bfbdcba1e0a46d8b46b5027b57f988bc4d4fe1803269240a7f1a2bd00ce1ecef77c36e0663ab0f91179dcb9cbcbb2b644413c3eea33', 'oli114', 'A'),
+(99, '327a0d7f53ee065f647e435f761bf1e4f58576e573897d522cf61067350a4197dc17375cbbe2fdb7f6f6cbb6e701505906b742400edd4417d1253f6b5f78b2a9', 'zacharie768', 'A'),
+(100, 'de0a634f517633b35205306aa146a21d99f250f7193b7f11549430a41535a67213f2a41d966600c773fc961ec8f97cf07a5dd640cc94a3a6b02f41be83676ebf', 'henri858', 'A'),
+(101, '018f4c6e8329369c28b077490786f933e2d66ea68d3fbe39430efbe46c38d91d00ba0ee1a395f6b541e89e163945e54c697896eefe005bccb3f861471ec3b51f', 'claudine538', 'A'),
+(102, '871df5d14c1edb237866c91573be88ae95b6b53d0af3a1178120808ab7b896ee9da60d25cde28eb4ea98510304a8b2513ee74a5b5ca60b9e8d50245f77ec63bd', 'ast983', 'D'),
+(103, '1c3f1060d9f606e209c0b2ca6710e27cfc881ea54dde07ab92bf1dbbec9a0d6170a8611b824d20049d76ab4516bd9e1b659054924f7d58f3366f6c3f3cbd7bc1', 'augustin380', 'A'),
+(104, '2e470827957e8be74725fc28f365b62814d1642de4000f9084cdaf304f6f6e1e65dd74cbc42c6d3461b878f6de3e5d4458b83d78bb01fd06fade8f29545773e4', 'mar566', 'D'),
+(105, '9d9c6b2792c62ec89e5dfddf8c416f969e58dc19ec994f0ce5414d80491490769e2d9a6a14a7972db490e181af40b5958a2d4bbc3b818a8d4ec7620f2050a38b', 'denis786', 'A'),
+(106, 'c7092ac45cd07531350a8ed84cfca7160f40b66c711c0336365c70a3c38d0dc5a22dae28b2ce7e84f0006ea23af677e750a28d759839559750682ce52cfba1af', 'paulette668', 'A'),
+(107, '14cf4d66038ba69f63d0de6d5babd6915bddec1ba62f880d631cc67a76ed50fd329a06f2b825f62cba1cdf6a9a5871dd08c68daf9fb1750dfb5fc644f701d46d', 'frederique722', 'A'),
+(108, '26d1d6e3de3768354664e7364febb2bb0ed3042017adc1818e31fd2d6f38ed0393d4d7a6d56c784b9b1d65d88d53e727b1f3247245ae0c909ee1b191a63349ad', 'henriette540', 'A'),
+(109, '33b778b17c4f4175bb8a2a2c8acbca5e9817647fed97fdabe3168340a64ec10108487c43a2bd508afd5138d8a3ea068195c54aa1cbf72321425c0197637ed704', 'sophie181', 'A'),
+(110, '53dba9ad5ee496ce1ea3116922cd1ef224c76d01f0979cdf200e996c437353d7ef7028692d5127cbc9068871d1ddb57aba7add8aa7bce22a51afd9bf70bb46c6', 'therese238', 'A'),
+(111, 'dde8d78f93ac30f0347fe449ce6d4153533c29c4dfcbc4f1a8d3c960bd6cb134319aa5d057a1870f947e42544d514c8d215783e7206570a760cd6e92c12f61ad', 'thomas807', 'D'),
+(112, '05396756b1d89ec54488d40a83a78a1d54aa2f9e72516846eff45c2bae728480ff0b3369fe8986f491155274e2c3549309b7ffed413b0531c16031657b2e4554', 'zacharie661', 'A'),
+(113, 'fb005bdd74f00215c51f8f04c499c3803fa0621e60eee968f6daa176a40eb2c492c3f5950afc680c9cc1a5201ce9df775732ef54c2ffb8995643777d98c606f7', 'marine840', 'A'),
+(114, 'b266d9af9b2e2b8423d16e5452abe708621ca74314ff5efb033ccb3414cd514c3610028802a59ac0fe4dd3c03cd72c8180a08d2fecfd31895fbe41e53f8b4c58', 'adele786', 'A'),
+(115, '6c3388bfea16ac721d7e42a94f733a838aca2028764f1c884ca18983711c5be6188e9e51eb3df5ab5389ebcbb0ee08a92298132483c8d08b69caf010a7374fb1', 'jeannine835', 'A'),
+(116, '2893dffde747f970bc8b6bbfbf5bd946b8f6b085773a7c244845e0eb393223853a0ff1e58979e21a8abc5e7e16fe42692d2522fb6848c06c0a25e6f5736a2207', 'colette420', 'A'),
+(117, '03a7b6c93a3ee99533460309e257a31933fc92a8671402aa144689265ce7ff8e58b07714f9050749474f20acd5e3e53c0d2f200cdc7d1f35c236f01ebde244b5', 'ines242', 'A'),
+(118, '030f4288c3a846e1556b2c2aff1092d412e7e74d8789380ae2b9fc87bf6912a8b2f116a678113cac916c639353be9f9281c6b351da4673d91e7d664fafe576c9', 'susanne514', 'A'),
+(119, '6035bf28819adc6273b7be0cd9e3b24108818ee5527911165c65eaea04712088f7d3490b08660bb8e9889605825675df52c780a865ff489c39eb92c9b5c6b169', 'cecile39', 'A'),
+(120, '09c3259fb066b4ce8422ee48b88247af3a13f78aeeecad361a076450c322b4f2c9c610083f8aa2019aad8e4ff7be489681ad9680a6fd28120299b0e59c5bc4f4', 'daniel819', 'D'),
+(121, '2508daa96138ca7308776130a8ce4fd5975774644dd77751d810339706e4bb6a57dfcaed8a3252661fe5633a136a9d44a422873ffe412545e6e5734687b03275', 'zoe275', 'A'),
+(122, 'ca463890da65ad607265855f2f7268e671dd7bd1054c1ab1df1cd0c9562d70b8a3e384db818e4205c883a8c363ce2d8675a27f18a5c21c17c742c75e49506d99', 'eric629', 'A'),
+(123, '0d58b37f72a4376d2205d4e95c52066df7e68433a48b16d632b498eea82a28a799781b9441108a08c27d1c1a29a64bd1604190c7ac7d79ce6f27d7c1c525ceb4', 'richard467', 'A'),
+(124, 'ff6302b7a9d771eae959cf4a38bc316e9c23b75b875d4b90dbf9f18f2e311abc33de9b30f9982deb2c35c63d6697de1be2aa797f79b750707d7f1bf00023999c', 'christelle750', 'A'),
+(125, '9c4aadcf4a8238176b328d901a8bc024a859661b940818a96c8e1d704d562f629af3382e1ed6c8ea5bed748bb0b7bc4c4b8da06bcbe34612e22d63f384615628', 'marthe987', 'D'),
+(126, 'e86eb3060b765084de84f6e1faf3850e7bd9cc49443e2e19e21e228b3dc1371e569ed222b84c0ac78390cef807b32f946b4c89b928dd45b4bd81a238ef2d942a', 'margot92', 'A'),
+(127, 'a85316ad50f9fdca127fb3157056889aab5d79a75941c8bf5c6e390b52682c1ef11c2cfd6c012b4388c4ce34d003397eb0a173d62b606b224a7c8d459b29cc92', 'christophe242', 'A'),
+(128, '5b697ca54566bbe209b26e81bfad91bee9f0f98fbdf71824fe2bf72a41393bfefb46fca51344775edeb080cd06326816dfa9da0f9a70b3efba2d2979c14472ae', 'charles355', 'A'),
+(129, '072a0975ecc40a0ba660aa64f818f4fce17487527736b91cc492649bdfd0d8378211ce5c15027b8758c82eecb7f5bcc3fa5a5954dba0d8afa39fc95b47c8d997', 'nath649', 'A'),
+(130, '9e6c3b361bffc640effa7f0fb70a08575135b788eb5bb90d2648ff7501d86ce9fdea8000c54031dcd5ebb2bc5c5e3afd60530e945e53955ea7eb8ed39a3ff95e', 'martine634', 'A'),
+(131, 'a8e9218fcd9d52e2094965477d9ec98ddf961575f24c4266723880220a74ec090b5e4f54591a27f3ad761a838792dbd94fe467ddbbb104b71b4e22c2aef853f0', 'thierry500', 'A'),
+(132, '809f976a6e944522de587169a17a890c7bc771baeb26ee223a93028acd0aff889d878ef9f23aa17c76b250063f0d5b2438d33b298a0d3192efb7b9f6d8d75899', 'madeleine362', 'D'),
+(133, '5768b3485bf1706c90269f3458f94e1fbaaf0eb9b5d94718de694c2de8a10f84d9d36772077fa05c5d373bd21d42c4dc47fa5acb21a2ee93825a7c2e9aa5c37f', 'hortense96', 'A'),
+(134, 'e744ac051a6d378c461148a36fad86f013cffbb365694bc8d401836713aec0043a0caa73b92fc37d914580111f30ea9850c0c8cc5aec2f24e94504617dd5c9b5', 'maggie132', 'A'),
+(135, 'fa5a1737fd3f80992cb61d48d47a3364876453df3e43096eb22a75309e2e29f21b5aa712ec0f3b83df6cd7551083e6bbd9c7ebe76d63f5afe3300e9252a740f9', 'valentine811', 'A'),
+(136, 'f364c3fdeb26ec2cd7c3b2c278ed78d42fd119f86018128f06f60d31d27f75779f2794d577e88db3786d89c477c47893461468c3a3f86bcc7c7f2eb5ad2f6fe6', 'caroline214', 'A'),
+(137, 'ea68c646f29b1d5423e307a3b1e34cabf8b82581f36891eb00dc7011a404c3c4c39203ede64c88c879d920e0f4c49c6e0ff72f95a9353cca30c2c52f78f1b0c0', 'roland192', 'A'),
+(138, 'c3f209062eba06105eec2076cfa8c83f1e997beb266537c660c92684c57e7cdfe2e1e4d49f462a5a4d95dd6af3341dfc166b11bf65bc0cefd25ad6b2fc277a79', 'michelle661', 'A'),
+(139, 'aeed91e570cd710b6f519aaf52f6e0d0b9763d57b78295ea00db9269bdc197b804759717578966fd32ac6d9978e326e74d2a807d9aee70fb05268e894ca2c5f3', 'alice830', 'A'),
+(140, '031bfb79dec55f1bffc8912b59c87c3342f01f9a7a45134af2854c2a0c460229edcd347c010299b28244354951762d4235552fbe9f0e730fe9927312a36ca0f4', 'marguerite749', 'A'),
+(141, '48f2283eb71665da5356487dac55f4d58e9136f0eb16b05e2c7c4762d16c9f3e3979f53ffdf57e12263ece69fc2e10b860bf19e2fc7efe473a53171f80cb7e79', 'adelaide421', 'A'),
+(142, 'a06d13a4adb0606043822d279dde896496c26c8dc4aced632467302abaecee85ca42ea7a66ed743a37d6ef09574029ccbb64d3ad5f3afae61deb6ba522bf9542', 'alphonse96', 'A'),
+(143, '30ecb4d7f3c3e8a14a73fd3c5b07ef3e77913bc4b5468417cfb916e1b3acfd2e93b0a5001b7dca39dfcd7ed39e94587b1666a7d0ee0b6d1da9b3abd717375bb8', 'celina184', 'A'),
+(144, 'cd263e3589f4cd19d4b37e38b73b36769ce32247ddacc968373abfbf7d920568079807ecbbd6ab2181865096e094a470104dbfe40f61bd61c84133df2d5d5921', 'adrienne38', 'A'),
+(145, '1a2ea40ac918fa68e01a16c2d1fb5e182b9d92bf8a1bf3686a008a77d5f41dd88d4a7fde841eaf51fb812189091156aa43cc0f9a9cf0f043a749760815b8fbf4', 'jean936', 'A'),
+(146, '0ff02a688f85f43463eb0b64c4a81367cc9701d400942f8c0631d35cc2c0a97777bcba91448e53e4fa8640ebb59cf5bbdb8e6f531e924ac1129c7fe35cee8915', 'juliette681', 'A'),
+(147, '9f923de6e3b4e89ba626f631a178da740cd8fe32fa2b9d18b67cf90bb4df7daba50fb7e46129f528d8fc8e2194171c43808a17144a314590f82e4a80c52d5eb8', 'gab856', 'A'),
+(148, '86b0dad8f06e07c83d363dd7bacb48a49b19325fc7f812b1f92bb30c94cbd1f413c8825beafccf21313d0383f69f95a68c630c13e99a5c89d800307c7ce5e8b7', 'clemence495', 'A'),
+(149, '7cf17b812b4d2d23d8c3c91099716938a6aefd0c5f2a2597217ae7826c20899f926b9c832bfe3f773c19e4811c524120d172073094a922d3fcc6ca7b71a9918e', 'charles368', 'A'),
+(150, '9ceea7eea864655afc172dbfc06d149aed399e9cad88c3aead6bdae8aa3f86644256654c9db1ac4af3993a21530fddc0b2113dce7430329dcadbfd945d1eaa5f', 'martin571', 'A'),
+(151, 'd17abaefce04cd8a9e16da4029350b16a60826b508af0d660652c5ec9169421c13b1043696b979be3cde62542855161ddb1d7af7e2a435de26302c3b1e95e9bc', 'pau24', 'A'),
+(152, '8c63bc234e6cd98900c75719b14cec9a636128e46c6177e14a4e4609ecf611ed5015e4e613b65e0f17172aa7dd8120f326e9fd72209e41db80707c7a9c36aeb1', 'sebastien753', 'A'),
+(153, '420b27ebc5a5e2bb2ae37542ed381f23226e19f9962d840e05b79cccb39a7ea82345e94fd953a4eb8e391d8080baea3b9db473dba7001d304d47f9c374827926', 'gilles549', 'A'),
+(154, '33c1827163814fe1912394851fa562789652d0c4c2d3533b8da26f8a536f6e6b36f36e3977ed1e3d1a0c93a6f709dbcd855d8476c068fb45962cb19538d9beba', 'nicole152', 'A'),
+(155, '31b6277e8affaf02676ddf29d0c01515edeb905284cf1e39dd5c0515e10d5c9cd4daa146f26b62d4e8967ec628d915bcc54789f39723a762f45f14130a9abfab', 'paul902', 'A'),
+(156, '2837ab8683286788177490ec99dac5aea5f093d76be3883e67d961c682c8fb0623e3870329c88ce3d19297a61dc7abe02f8238c456710887f240fe79f413a610', 'anastasie904', 'A'),
+(157, 'd4a8d9a3a4fd89ad750abbeee1576d4a385bce760c6269cf6f30cf23ed785eecb730fb05ede4625bc68a681cfe792f393b42e99140ed94a77363b27d5bae0cbe', 'anais267', 'A'),
+(158, '4936d32c9aaddc8ca1aa2da1ac0bfadaf38bf81f69d718eed514001640f625fdaf1d01b8877eba59602a0e1a2c9457fbdda46c0dac60b545d551a5216b07e508', 'colette523', 'A'),
+(159, '869f96277e3c0d20efd3ccfe462e6ebbfb9be470c953e456c6792956e9abf8b4010ba320e5ec2d93d5d482abecfe0f2cfd033037dd06b6a96d1ed5bd2a69b1ef', 'edouard610', 'A'),
+(160, 'cba1309df3b12f96d8093aacee090708f8f2deb9568081d03b90388ebabe405c6ba215fb9bb84ff376a4646f666d70b3552f236b4ae3dd76a3f35408f586a5d2', 'jacques567', 'A'),
+(161, '172fc21266ff104146a266a5c59876f4f51f437b00a20628a8341b26daf8808ef9a6d40fe3d5e3b30bf5419f32910a4935adac7167af88c7432591643868c971', 'caroline144', 'A'),
+(162, '8bae082407e9d98680d1e57fcc95fa4c137e36388a7cd5682de709d8a78676c19e3cbc1573d0ea9e91b213ddbf6c780b86313556c0ae98fbd043edd14b82b5ea', 'and767', 'A'),
+(163, 'a42a3551478abf13834311044498e745d17c65cb582d9063ffe2afb2302abe0de6e154fff5f6605f427e483c97b6a6fe04be345f69a5611fffff9859a296ec2c', 'emmanuelle479', 'A'),
+(164, '5d6973303717a42470494f8e35f9d2178075deff94d722ba03a450fc1d24f65152f0238308cbcc9683f9ac80af18c9f0dde885fda4c91c64de6e7be984f373fe', 'roger844', 'A'),
+(165, '49b6203ac2658185c4552e1148015861bd0af2266828b88b927bafb3a2925a8f3dc0b876756537966c4e879c8e40829f6b5588c2682c71f158f35b967e74e4ec', 'guillaume440', 'D'),
+(166, 'a5b7dada01dd9f9e40db803b896043ff8a3709e80ba12838b5d2cf81788a99113500c9c938beb89509fdcbe8a9af0804d88a3779dea1735d6a0e362dc8e2ab52', 'therese909', 'A'),
+(167, '0d5b2b085a9686ce4feb946b6b0fd0ae4c27096a2c09a60ce60ead0e8a0bf6b40bf6a1b484e9921710654db58d7c31c1ea381ae1adea9911119ef593761307e6', 'aurore554', 'A'),
+(168, 'd671318fceb95d8917ed33e54f6f0fa5816f91d63900971d97b5144520a8581e9e0485ec145cff0b92a7767421aa078f3e92885849e4ff700aa2e33573a509dd', 'emmanuelle532', 'A'),
+(169, '00967c93b4be1110f9b22c0d58c6806661761c569c97473cc023a792ff969102e2c4f4f884381689c3c31b19e6a859dceb32ccefd3b8a249d9c8fbfa3d1c5254', 'rog460', 'A'),
+(170, '03f73630e6d045dc184b90970429d2d8a7db55ff73ab101d17fe1e591771c3d05fd74f45542535cd397f831118224b20b71c979c8fa797d818433caf4fc26b10', 'maryse633', 'D'),
+(171, '70b07d7d7aa41fa1f72d3d3323902a597948b5c248edf3093a10d1d2e685d30ca35ceda28acb577813c09c3faf0ffc11945e017142eb7c77d78a4f6ee63df9d5', 'arn828', 'D'),
+(172, 'df9f2ed9120b35131a3c094eca119a08158695dbf5267c2c26bd321885258eff72e7fcdad5bf07af85c6eb08f027173e103f322aba0f2d54a23ee1867d0608c0', 'aga154', 'A'),
+(173, 'b63b8bebf13df71a9ed9e92738a43cee04bd383b498b91be9bea1805b1d646fd23f9bbba6886cc465444507b7f5474b9ba1685d138b32160a04a337e7349e834', 'maggie752', 'A'),
+(174, '299f6ffd3a61bb99048212f861b9c50ddec7fdd6729040bc8f818b8a5235ae73ffb4a99be4498cc5b0940309b52fba026f8d72e6364b96b50e892f935d506275', 'ale73', 'A'),
+(175, 'eb328fb9c3e9488b6ebf442183f86c553f3bcfa61706f923e19dd6290d4ed4e258bcd426650bd43319aad620d686f3454def96548f24fef3ba8d321d0fd10e17', 'nicolas540', 'A'),
+(176, 'e2a02d5f1c5f6fe78ad34ed7ec9c935b9da86fb4c1283de7c892714218b2b07b38fa93677c65ba4005411dadcd8088a452377f799ec470bc9bb9e7814d249904', 'henri504', 'A'),
+(177, 'cf8eb15707f1fcf9b01ea7ec921fba5c928da5d8a1c3d9350c29823528ffdee9418a593ceb8c11693e4d163e1c560f253d42b92323b97348a07932add7d988f2', 'emile118', 'A'),
+(178, '86d4220671eff8b8aaef59e8705aa730d1fddbc4104ff637493f44b24fb0d6ec21ea46c7928d9da218c55f51b5b671f1f804da4db0a8228cadb0b894003057e6', 'joseph68', 'A'),
+(179, '3942cf41dbb19409b5952df86b9a20d67e62924b741550da56b1fd61be35b00e45a155ce876843dcb8c18d05980db18a6137ac242229f606f3be982127e55ccf', 'henri293', 'A'),
+(180, '65371667fd4cf0ce3d2bcb95f72375a8e72f885fc3ad3989dc5059652436da394cb2a0f76a06c2932ba3facd76e67045792f0d72a59e348f06a9a2b5e03b30a0', 'nic110', 'A'),
+(181, '907fff9797fe2b2ec7b542cd54db9d2a276116caf92f93f57ccc38db4a88220999361b118700a68a6384b30c3f97f53cbbbdf79c7c7c9b4b21a6c5f264d90395', 'margaux585', 'D'),
+(182, '6baf5cd00ea5e885c0567036dd442098f73653a305a0f317ef681dd6fd3f5be6a17aa3130b3d07d318d10d75f964909d0c2cdb276ad5090545267aaab9ca36a5', 'nic925', 'A'),
+(183, 'c06de99a4425d848f8bc995ba595f61f302b53ad8a523ef8d4c856b99a421665986e0597d259e76bcc56ce6ac73dd21cf45e44e91f5f4a0b146fd1584763ef2a', 'alexandre463', 'A'),
+(184, '647df8286a466b7210f647d82226acca59a72be5e04dad17c08db464a51ed07071c457b363967125c2ca18deaf58a219004c00464f9bc3e0bb1e2c0f34b60d7a', 'claire527', 'A'),
+(185, '0dffff4b8631d8f15c9b290e3e460f7f459cf699fd10fb53d1ff682ce26a8969508940687d771f3d65d7653183e8bc19fe89d516140130364c5598544872895e', 'veronique214', 'A'),
+(186, '64f300746ab5c1f3a1a4d0f8c1710b5389a54b27bd9900e7d3618eb3e0855127635e157712235f1868eb498434b6c4c46fde3363dee0fd3eafdd4fb7db79daf6', 'jacqueline473', 'A'),
+(187, '3746da3eb2be980c12098802ceaa94c9a6d670b3fa61b7fd6bc2a0aef8a123d25372c60762fcf26736dcc2d1ce351f385b3adff89a50ba6f2f23bb394479876f', 'jules836', 'A'),
+(188, 'af0e9bc4848484a9f16144c925ea3379edcb26e94fa3e108809a48c735a61aa37c802567a6d14599d7a0f40b79933e51e8898e7484398caab3d194f2c41ad474', 'remy974', 'A'),
+(189, '060f69ca8587511a402c398720bdf429a841b9290a648b53b457792282695d6d5b28aeeefb638d76a0c84823319647410cafa63df4427d03bf4b2d18b5d15494', 'roland545', 'A'),
+(190, 'f79a43249e8199e8ee423b67007ebce3aa99529540a267e9080565972f547e6c90d34843fd55787dae6448c74652433a7855a0cb61c12cb82c214a9a9d7ee474', 'aime974', 'A'),
+(191, '6ecbaa0d4f86c33ffa57528a06a02529eab8bb26374b34b7e33da39bd600981ff58fda51ca0e499dca32de791bf23202b89c07624bf7f803f76a7199d772eb7b', 'william954', 'A'),
+(192, 'bb31460b41b5fcf9b9e799ea8145414b48aa06720cbcffbda531ea364efa5549eacde33965167834364585e15578c2db62569ea9e1ebd19a5a1285cc297f0254', 'astrid975', 'D'),
+(193, '98a5c4f3d3fffc93dc76f3377543fdad02659688ca79bc53b5a29271fbcb94ce68bdcd2c7eda4ac55d5c11bfac252157b69a0a9074f1e9f1954b25b8d7aae926', 'elisabeth468', 'A'),
+(194, '6d7fb377003b09d873d12e8e306aefe4d3bda7ae2a6719c786855a04c6d6497a4861b58de4bda93f85278ce5086d9570c2aeec271d3d7b6acd51829209961a80', 'ale134', 'A'),
+(195, '3f8acbbd5c77d4f91c669a1fe787979ef131d85e5daee7113691d89d79d0fa2c14901098b44dabdd8908f99aced7ca3f328bf9bb48cdea417313880b76bccd20', 'juliette333', 'A'),
+(196, 'ae74b4129b14f24cf2a5a7a57c6eb09993c8ccc972976caddafea9557897656a71cdcd60db547b19f189e10979ab007ac6561bebe6a79c3013b12a5bc66593b1', 'gen256', 'A'),
+(197, 'dbc5f71c2585fafb6279703f458a025e53a780976650ccfb343e912631e6ef3dc9d24b047dde9b73628252162d4dcff89edcf24e4ed218911840aa1893e6a9a6', 'timothee227', 'A'),
+(198, 'c48628841f6fa50c73fbea91c7c4db2ba4bb96d8a2b21634cbd5ad6902d6a3754556f4660bc8c2d67f651ab64e0755435f333dc11c34f15179a3623d6bb53527', 'gilbert812', 'A'),
+(199, '29a178e8cf0c9c90abe1b9674046b69743e6767adb98b4c21cb51266f5f82bbb3832eb29fe8258ec6d1181ea128261cf0e0033f3a19e63d2646445a6144cb5a9', 'mar805', 'A'),
+(200, '52c7e57c1175f3f8228d94fdcc30bf0f22ef1a7c7acfb91553d80f89810adc84771b17385d68583686796f3fa886dd817beea882a15268cad9baf3c62df894a2', 'denise743', 'A'),
+(201, 'ade8272687af56417d96e212e01f3323dee5656c5210e997c8e3ebd35473d73d9a284e30913315b1de3008baa5386dcba2e2c9e7acf5444ed0169fa7abe5b9bd', 'invité 1', 'D'),
+(202, 'a78a6fb1a549de166e5e8d286084aba874e0ee3f9f725e3db96c29546cd898711c02d1f77492c010be077ad613ca4f2557bb5ef2543e1e3d74174a8e288ab280', 'invité 2', 'D'),
+(203, 'c0551035a71a1239e80be41f2c3b5bee320c53cc94f7f167e9e7a20193e8ef82951951b7dfb5a21ff8f1a981ca4a6b223288f97037f0cde2ec5cb54698694226', 'invité 3', 'D'),
+(204, '5ccbbc750d8ee85e4c267c92640a605ef87a4617f65e64a07f478e44c11aa8d546551e3aa2890bee54b4d1bf2e93c042848548c615a34e9c24b22051fdc9c6ae', 'invité 4', 'D'),
+(205, 'a31112a7f5114297ad1fb29b55834963d49d5c0c76e2de69149d8c9507fa407370424dba47b8754e6243412f368295fe98398994474fb2a0c426a9d78ebbde34', 'invité 5', 'D'),
+(206, '2347d4728536d33363ef12101a733f2a89eb60a3e596a73c8b615f0059a1ad8048c146cb10b3903086fdc838c7f86cca26044be48fea1caabd5107c4b2c11caa', 'invité 6', 'D'),
+(207, 'c412cca6d422f371cbf74bf6518a6b36cfa3d22cf8d1932a7fcef6e915701430ae8cbd72387ec707349733844c6a26f9f1fdf057db8ea49860c8a7a00dfd4d02', 'invité 7', 'D'),
+(208, '43bee5e0f2aaf594accf3a1a4cd5118a0e85c253f25364140568746cad60b8f05b7adf842614a8ba3f5acdfd539e7373d57ef7995abff7a0c31931821558db6a', 'invité 8', 'D'),
+(209, 'fa10a09e10b767464752e53817c96f213189d849b81960ef9533c03cd886ae17fa00a78d93d949ffad96d565051ce7f3b5c0e695cb1cf6640b641d1a0e86a672', 'invité 9', 'D'),
+(210, '332f92b31a7bb2c74a54c18c95a71303b4cfe4c51a74e2d22d0bedcddb2eb868225a35251156341d542eecb1870c607c862512b425c9693c179a6abaf5a4639c', 'invité 10', 'D'),
+(211, '1f7f7127a4124c9cadd17e7945488a626a9ad352ae284c9c416c98fa33c94e6c', 'ellah889966', 'A'),
+(212, 'cb8b22f4fe8e23e627480f0a0bddf8fb0d6b1a1d07be9c59f118dee7c0edd363', 'invite11', 'D'),
+(217, 'ee7f88e9522b7fb1b8e321eac462dfc59514ee3f0e2101ea185e80b472dd539901f6c60de9ce706aab54eb9020655ce504087dd9750fbf2ad5288e92929efa56', 'test1', 'A'),
+(218, 'e8062dc2b8ec99d95470b48760b441dc130d9b18afc3c8c80230d5756320ebb9b8653dc9ba6cc58bd0299a7193859623a0e63b48b0d48ffd8afe9a4294609060', 'Tamer156', 'A'),
+(220, '4035d79af76fc823586b0c64777de15eb135b09990decf975c090b0a9b3e85d57d7f51250bd510fc1eb4f35eea3e09b48361e00eebbb92ffc4c72c3d700bfd4c', 'erwen566', 'A'),
+(221, '66c64a79854395d4539ccc2b2e738f56f6ddbe45c5600f1ab5a9c0b36a58288e46b0e16b42dae7e9243cfdc67f2277418140df0e5db90936ec0dfda660c48583', 'cedric25', 'A'),
+(222, '101208abd0c20a0c89ec270618240ce34d61b9033880d5a408d562c1b911239ced13f2593054bad8203e8bab0a4106fa3b917ceaf49cd0811458efa8510aff57', 'rebecca', 'A'),
+(223, 'dac4912bd7d5e6dd8bff7d5406ea7f91dc87747910db998aa04ef1509d7492e01f896922433a7a861af7d036107f5d297d7093c5ea07b7a5d4d5b8509942c3bd', 'rety.cpt', 'A'),
+(224, '403bcbd6ab24fb0fc9ac9ea499f300ca9c4648f0be54d57d766150f4ffcdb0e7ae56a7ab18f2a42bc95d9626fc109829685c0e2ffc72dca1a95151e4f1cb71b5', 'patrick.cpt', 'A'),
+(225, '2836f563bcc7b023e90f6403876d59029a6c3bd9f6ddcf7d4ea935a59386c09d3adfa3f5a07a3945e26c260df2ecf2cc7ff556dfe20f7448fd7080afe4bc6f72', 'toto.titi', 'A'),
+(227, '5d5a70a2d78879834db3583f8d275582ece06eae78db0d400dda5a08957c6074', 'pablo.cpt', 'A'),
+(228, '0daaa613295247be6de752ac1390aa157cf655b5c6e8aeedffe94de5da3e0eff', 'momo.cpt25', 'A'),
+(230, '60e642af6519e889df15e7a72eadf44674dcc1be922042429aa515b00bc84d34', 'mimi.cpt', 'A'),
+(231, '89d8b7c49eeda7cf15b25f43b278619a53f876a842b6cc2ed720f3d3294fdc7b', 'titanik.cpt', 'A'),
+(232, 'f28245f0a3c815145e79abd1deeef98cb67f42565b89883b0815824762aa42fa', 'try100.cpt', 'A'),
+(233, '4305461c8a49bf795748d3b2ab15b0b399521c0f08b5080c74da164b5c6a89bf', 'stagel3.cpt', 'A'),
+(234, 'cca70204fe4d7769aaa2cbd944ee55a9584f0dfb66a4b5bd308287c585111695', 'stagel3l3', 'A'),
+(235, '37951c4d834b01a5f6b1fcefe4dfa976dd754096d50ff8c4444ac56e24307932', 'rita.cpt', 'A'),
+(236, '1b3450ce35edd8be6850bc032d8838870e2d44ec97dd926ecf36d8b0b5a7ef1d', 'rahaf.cpt', 'A'),
+(237, 'cythia.123', 'cythia.cpt', 'A'),
+(240, 'd3d833ca0989f74a514055bd7f0b5d43f1b33fb37c12da89cd3c0b27ca999368', 'jaber.cpt', 'A'),
+(241, '0b6cc7caaa65a2944e8379d15425cbeca779946832e5884a689323bce304f99f', 'cynthia.123', 'A'),
+(243, '68309679e6551d3aa1e92973f1c819136389da79114c410ae77e8dc566189433', 'invité12', 'A'),
+(246, 'b4208be4380b41d7e6793f407d528145a5bd3fe9c7339ffc81009daa2911465e', 'invité13', 'A'),
+(248, '0a5642080f6333d518c29d6b6a56aebf583ba6363bf293b35ff9587f750aedcb', 'invité14', 'A'),
+(249, '9e6bce5463d5089b00640361fdd9beffb46f990a06f3208d360699c3dd05f7ee', 'invité15', 'A'),
+(250, '9d71da02575e2872c4df3f15a9acc481f45817494f49523f17258b15de0ea2be', 'invite20', 'A'),
+(251, '282c3b95ab0df7551c9a3352ea9f9e4771376ba367bdba122a657e56a99aea67', 'elham.cpt', 'D'),
+(252, '9f3a22186ec5e7ece31068d1344cdacab2b34783bfaa85f994437f13afd2ed9a', 'marie.cpt', 'A'),
+(253, '884636c5031304b06a84ba5fa3f64c868dd504d65cad898a70d2c8982e89c5df', 'joseph.cpt', 'A'),
+(254, 'c7c3dd8e76261ae6c11a9bcd4e3c629699e8869d70e62a819ba73333ec0b3bd6', 'pape.cpt', 'A'),
+(255, '18f3880196af6eca63ff896399cf9fdc116eec32f595a06765601edbf3427897', 'l\'invite_12', 'A'),
+(257, '2df2315e64c37d82d141f11196a7f91f7f0018ee2b511e7085e961026cd7d11f', 'invite25', 'A'),
+(259, '29477b4d396811ed1a4d4e8404897d9a9db3c3a203d19a7d204a464e1557f63f', 'invite26', 'A'),
+(260, '4bac5bfac64d00397214c29d5eb44aab180e4fba1cdecad08be2125c91632650', 'momo.cpt', 'A'),
+(262, 'c013b30e8f0ca82b1fe701b8918de07017b2cc47db0b594bf54ad94474c76393', 'rebecca.cpt', 'A'),
+(263, 'dca9dd1bbdb4ae8105556249a9a483be4b12c272f9ff722ff781efd1b6bbd1dc', 'fadi.cpt', 'A'),
+(264, '1dbe6188e10c42664060bc8b0facfcd337a7756b5d508d33fe202afceb78888c', 'bjorc', 'A'),
+(265, '8dbe76217ceb530fd7750480e1da79e8ed3d5c92c55feb15b0d411bedd98b420', 'principal', 'A');
+
+--
+-- Déclencheurs `t_compte_cpt`
+--
+DELIMITER $$
+CREATE TRIGGER `hashage_mdp` BEFORE INSERT ON `t_compte_cpt` FOR EACH ROW BEGIN
+                SET NEW.cpt_mot_de_passe = sha2(CONCAT('OnRajouteDuSelPourAllongerLeMDP123!~45678__Test',NEW.cpt_mot_de_passe),256);
+        END
+$$
+DELIMITER ;
+
+-- --------------------------------------------------------
+
+--
+-- Structure de la table `t_document_doc`
+--
+
+CREATE TABLE `t_document_doc` (
+  `doc_id` int(11) NOT NULL,
+  `doc_titre` varchar(100) NOT NULL,
+  `doc_text` varchar(600) NOT NULL,
+  `doc_chemin` varchar(250) NOT NULL,
+  `reu_id` int(11) NOT NULL
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
+
+--
+-- Déchargement des données de la table `t_document_doc`
+--
+
+INSERT INTO `t_document_doc` (`doc_id`, `doc_titre`, `doc_text`, `doc_chemin`, `reu_id`) VALUES
+(1, 'Compte-rendu réunion administrative', 'Résumé des décisions prises pour la gestion annuelle.', 'docs/compte_rendu_admin.pdf', 1),
+(6, 'Document interne RH', 'Préparation des contrats bénévoles.', 'docs/rh_preparation.pdf', 1),
+(10, 'Charte des bénévoles', 'Document officiel pour les participants.', 'docs/charte_benevoles.pdf', 1),
+(13, ' CR- mis en ligne le 12/10/2025', 'CRModification base de données2', 'compte_rendu.pdf', 3),
+(14, ' CR- mis en ligne le 21/10/2025', 'CRMise à jour du site0', 'toto.pdf', 5);
+
+--
+-- Déclencheurs `t_document_doc`
+--
+DELIMITER $$
+CREATE TRIGGER `trg_avant_mise_en_ligne` BEFORE UPDATE ON `t_document_doc` FOR EACH ROW BEGIN
+    IF NEW.doc_chemin LIKE '%.pdf'
+       AND OLD.doc_chemin LIKE '%en attente%' THEN
+       
+        SET NEW.doc_titre = CONCAT(
+            ' CR- mis en ligne le ',
+            DATE_FORMAT(CURRENT_DATE, '%d/%m/%Y')
+        );
+    END IF;
+END
+$$
+DELIMITER ;
+
+-- --------------------------------------------------------
+
+--
+-- Structure de la table `t_indisponibilite_indis`
+--
+
+CREATE TABLE `t_indisponibilite_indis` (
+  `indis_id` int(11) NOT NULL,
+  `indis_etat` char(1) NOT NULL,
+  `indis_date_debut` datetime NOT NULL,
+  `indis_commentaire` varchar(600) DEFAULT NULL,
+  `motif_id` int(11) NOT NULL
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
+
+--
+-- Déchargement des données de la table `t_indisponibilite_indis`
+--
+
+INSERT INTO `t_indisponibilite_indis` (`indis_id`, `indis_etat`, `indis_date_debut`, `indis_commentaire`, `motif_id`) VALUES
+(1, 'A', '2025-09-02 08:00:00', 'Salle en maintenance pour remplacement de matériel.', 1),
+(2, 'A', '2025-10-14 09:00:00', 'Peinture en cours sur les murs.', 2),
+(3, 'A', '2025-11-01 08:00:00', 'Nettoyage complet des sols.', 3),
+(4, 'A', '2025-11-12 07:00:00', 'Coupure de courant prévue.', 4),
+(5, 'A', '2025-12-10 08:00:00', 'Réservation exceptionnelle pour un événement externe.', 5),
+(6, 'A', '2026-01-20 08:00:00', 'Fermeture pour audit administratif.', 6),
+(7, 'A', '2026-02-01 08:00:00', 'Réorganisation des espaces.', 7),
+(8, 'A', '2026-03-15 08:00:00', 'Inventaire de matériel et mobilier.', 8),
+(9, 'A', '2026-04-05 08:00:00', 'Formation interne du personnel d’accueil.', 9),
+(10, 'A', '2026-05-10 08:00:00', 'Mise à jour du matériel audio-visuel.', 10);
+
+-- --------------------------------------------------------
+
+--
+-- Structure de la table `t_inscription_ins`
+--
+
+CREATE TABLE `t_inscription_ins` (
+  `cpt_id` int(11) NOT NULL,
+  `res_id` int(11) NOT NULL,
+  `ins_date` datetime NOT NULL,
+  `ins_role` char(1) NOT NULL
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
+
+--
+-- Déchargement des données de la table `t_inscription_ins`
+--
+
+INSERT INTO `t_inscription_ins` (`cpt_id`, `res_id`, `ins_date`, `ins_role`) VALUES
+(1, 55, '2025-10-27 00:00:00', 'A'),
+(4, 57, '2025-12-02 00:00:00', 'G'),
+(6, 1, '2025-12-27 10:00:00', 'G'),
+(8, 2, '2025-10-27 09:30:00', 'G'),
+(9, 2, '2025-10-27 10:00:00', 'A'),
+(12, 3, '2025-10-27 09:30:00', 'A'),
+(13, 3, '2025-10-27 10:00:00', 'A'),
+(20, 6, '2025-10-27 12:00:00', 'G'),
+(21, 6, '2025-10-27 13:00:00', 'A'),
+(22, 6, '2025-10-27 14:00:00', 'A'),
+(24, 7, '2025-10-27 10:00:00', 'A'),
+(25, 7, '2025-10-27 11:00:00', 'A'),
+(26, 8, '2025-10-27 09:00:00', 'A'),
+(30, 9, '2025-10-27 10:00:00', 'G'),
+(31, 9, '2025-10-27 11:00:00', 'A'),
+(36, 2, '2025-10-27 10:00:00', 'A'),
+(40, 6, '2025-10-27 11:00:00', 'A'),
+(41, 7, '2025-10-27 09:00:00', 'A'),
+(42, 8, '2025-10-27 10:00:00', 'G'),
+(43, 9, '2025-10-27 11:00:00', 'A'),
+(46, 2, '2025-10-27 14:00:00', 'A'),
+(47, 3, '2025-10-27 15:00:00', 'G'),
+(50, 6, '2025-10-27 18:00:00', 'A'),
+(237, 1, '2025-11-22 00:00:00', 'A'),
+(240, 7, '2025-11-25 00:00:00', 'A'),
+(240, 8, '2025-10-27 11:00:00', 'A'),
+(241, 56, '2025-12-02 00:00:00', 'G'),
+(252, 55, '2025-12-02 00:00:00', 'G'),
+(252, 57, '2025-12-02 00:00:00', 'G'),
+(253, 1, '2025-10-27 09:00:00', 'G'),
+(253, 55, '2025-10-27 00:00:00', 'G'),
+(253, 56, '2025-12-02 00:00:00', 'G'),
+(253, 57, '2025-12-02 00:00:00', 'G'),
+(254, 1, '2025-12-27 09:00:00', 'A'),
+(254, 2, '2025-11-27 11:00:00', 'A'),
+(254, 8, '2025-12-02 00:00:00', 'A'),
+(254, 9, '2025-12-02 00:00:00', 'A'),
+(254, 58, '2025-12-02 00:00:00', 'A'),
+(255, 56, '2025-12-02 00:00:00', 'G'),
+(257, 1, '2025-10-27 14:00:00', 'A'),
+(257, 3, '2025-10-27 09:00:00', 'A'),
+(257, 7, '2025-11-30 00:00:00', 'A'),
+(257, 9, '2025-10-27 09:00:00', 'A'),
+(257, 58, '2025-12-02 00:00:00', 'A'),
+(262, 58, '2025-12-02 00:00:00', 'A'),
+(265, 1, '2025-10-27 13:00:00', 'A'),
+(265, 3, '2025-10-27 11:00:00', 'A'),
+(265, 7, '2025-10-27 09:00:00', 'G'),
+(265, 8, '2025-10-27 10:00:00', 'A'),
+(265, 9, '2025-11-30 00:00:00', 'A'),
+(265, 56, '2025-12-02 00:00:00', 'G'),
+(265, 57, '2025-12-02 00:00:00', 'G');
+
+-- --------------------------------------------------------
+
+--
+-- Structure de la table `t_message_mess`
+--
+
+CREATE TABLE `t_message_mess` (
+  `mess_id` int(11) NOT NULL,
+  `mess_contenu` varchar(600) NOT NULL,
+  `mess_sujet` varchar(100) NOT NULL,
+  `mess_code` char(20) CHARACTER SET utf8mb3 COLLATE utf8mb3_bin NOT NULL,
+  `mess_date` datetime NOT NULL,
+  `mess_reponse` varchar(600) DEFAULT NULL,
+  `mess_mail_pers` varchar(250) NOT NULL,
+  `cpt_id` int(11) DEFAULT NULL
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
+
+--
+-- Déchargement des données de la table `t_message_mess`
+--
+
+INSERT INTO `t_message_mess` (`mess_id`, `mess_contenu`, `mess_sujet`, `mess_code`, `mess_date`, `mess_reponse`, `mess_mail_pers`, `cpt_id`) VALUES
+(1, 'Bonjour, je souhaite connaître les horaires d’ouverture de la salle de sport.', 'Horaires salle de sport', 'MSG001rpmkhyrbcjso9', '2025-09-10 08:00:00', 'Bonjour,\n\nMerci pour votre message !\n\nNous serons ravis de vous accueillir dans notre salle de sport, ouverte tous les jours de 6h00 à 18h00, sauf les jours fériés.\n\nÀ très bientôt,\nL’équipe du Youth Center', 'utilisateur1@example.com', 1),
+(2, 'Comment m’inscrire à un atelier cuisine ?', 'Inscription atelier', 'MSG002irycvszpmm863p', '2025-09-11 09:00:00', 'il nous faut un certificat de maitrise', 'utilisateur2@example.com', 240),
+(3, 'Le matériel informatique est-il libre d’accès ?', 'Salle informatique', 'MSG003ejdbcufiosnqp9', '2025-09-12 10:00:00', 'oui il l\'est ', 'utilisateur3@example.com', 240),
+(4, 'Puis-je participer à une réunion sans être membre ?', 'Participation réunion', 'MSG004poute9966mlkjh', '2025-09-15 08:00:00', 'bien sur ', 'utilisateur4@example.com', 240),
+(5, 'La salle de musique est-elle disponible le week-end ?', 'Disponibilité musique', 'MSG005yopmlkgjtd22lk', '2025-09-16 09:00:00', NULL, 'utilisateur5@example.com', 1),
+(6, 'Je souhaite devenir bénévole.', 'Bénévolat', 'MSG006pmlaaqqnnblk6', '2025-09-18 10:00:00', NULL, 'utilisateur6@example.com', 1),
+(7, 'Mon mot de passe ne fonctionne plus.', 'Problème de connexion', 'MSG007top8vnhdlkjftp', '2025-09-20 08:30:00', NULL, 'utilisateur7@example.com', 1),
+(8, 'Je veux signaler un problème de propreté dans la salle de sport.', 'Signalement', 'MSG008appmlqssrrppoo', '2025-09-22 11:00:00', NULL, 'utilisateur8@example.com', 1),
+(9, 'Y a-t-il des événements pour les adolescents ?', 'Événements jeunes', 'MSG009apmlyrdhgmpluj', '2025-09-25 09:00:00', NULL, 'utilisateur9@example.com', 1),
+(10, 'Peut-on annuler une réservation ?', 'Annulation', 'MSG010aamlnvkldfkgjh', '2025-09-28 08:00:00', NULL, 'utilisateur10@example.com', 254),
+(12, 'question', 'question', 'ABC2299OPMLKXXQQY123', '2025-10-28 14:21:14', NULL, 'marcelle.maurice1@maisonjeunes.example.com', 240),
+(23, 'je voudrais tester pour une fois la salle de peinture mais je ne suis pas inscrite : quoi faire?', 'Salle de peinture', 'bac1d2a2f5b3778b49cc', '2025-11-18 00:00:00', NULL, 'no@gmail.com', 240),
+(24, 'quel est le prix s\'il vous plait ', 'l\'adhésion', '7f156b2682e7c9483f0d', '2025-11-18 00:00:00', '60 euros', 'vm@tutu.fr', 240),
+(25, 'c\'est quoi le prix de l\'inscription ; merci ', 'le prix de l\'inscription', 'eee55ab780efd280f52f', '2025-11-18 00:00:00', '50 euro par mois', 'ellah@gmail.com', NULL),
+(27, 'je veux savoir le horeire !! merci ', 'horaire salle de dessin', 'd03fbd8c504f2e105e05', '2025-11-21 00:00:00', '12h-18h', 'sers64578@gmail.com', 1),
+(28, 'je veux postuler comment envoyer le mail!\r\nmerci ', 'Devenir Gestionnaire ', 'f47b5c6df9a2c1088438', '2025-11-22 00:00:00', NULL, 'vm@tutu.fr', 240),
+(29, 'puis je tester votre application?', 'tester', '5046a2e96a64806e7666', '2025-11-30 00:00:00', NULL, 'pape@gmail.com', 254),
+(30, 'bonjour ; pourriez vous me dire les détails sur la sécurité dans votre entreprise ;;merci ', 'Droit et sécurité ', 'e83436384522b25d87ea', '2025-12-02 00:00:00', 'oui bien sur ', 'v@hotmail.com', 265);
+
+-- --------------------------------------------------------
+
+--
+-- Structure de la table `t_motif_mot`
+--
+
+CREATE TABLE `t_motif_mot` (
+  `motif_id` int(11) NOT NULL,
+  `mot_motif` varchar(600) NOT NULL
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
+
+--
+-- Déchargement des données de la table `t_motif_mot`
+--
+
+INSERT INTO `t_motif_mot` (`motif_id`, `mot_motif`) VALUES
+(1, 'Maintenance technique'),
+(2, 'Travaux de rénovation'),
+(3, 'Nettoyage exceptionnel'),
+(4, 'Problème électrique'),
+(5, 'Réservation spéciale'),
+(6, 'Fermeture administrative'),
+(7, 'Réorganisation interne'),
+(8, 'Inventaire annuel'),
+(9, 'Formation du personnel'),
+(10, 'Mise à jour du matériel');
+
+-- --------------------------------------------------------
+
+--
+-- Structure de la table `t_participation_par`
+--
+
+CREATE TABLE `t_participation_par` (
+  `cpt_id` int(11) NOT NULL,
+  `reu_id` int(11) NOT NULL,
+  `par_date` date NOT NULL
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
+
+--
+-- Déchargement des données de la table `t_participation_par`
+--
+
+INSERT INTO `t_participation_par` (`cpt_id`, `reu_id`, `par_date`) VALUES
+(5, 1, '2025-10-31'),
+(6, 1, '2025-10-31'),
+(9, 3, '2025-11-27'),
+(10, 3, '2025-11-27'),
+(47, 3, '2025-10-12'),
+(48, 5, '2025-10-21'),
+(58, 5, '2025-10-21');
+
+--
+-- Déclencheurs `t_participation_par`
+--
+DELIMITER $$
+CREATE TRIGGER `trg_avant_inscription` AFTER INSERT ON `t_participation_par` FOR EACH ROW BEGIN
+   CALL insert_doc(NEW.reu_id);
+END
+$$
+DELIMITER ;
+
+-- --------------------------------------------------------
+
+--
+-- Structure de la table `t_profil_pfl`
+--
+
+CREATE TABLE `t_profil_pfl` (
+  `pfl_nom` varchar(80) NOT NULL,
+  `pfl_prenom` varchar(80) NOT NULL,
+  `pfl_date_de_naissance` date NOT NULL,
+  `pfl_adresse` varchar(250) NOT NULL,
+  `pfl_num_de_tel` varchar(12) NOT NULL,
+  `pfl_email` varchar(250) NOT NULL,
+  `pfl_role` char(1) NOT NULL,
+  `ville_code_postal` int(11) NOT NULL,
+  `cpt_id` int(11) NOT NULL
+) ENGINE=InnoDB DEFAULT CHARSET=ascii COLLATE=ascii_general_ci;
+
+--
+-- Déchargement des données de la table `t_profil_pfl`
+--
+
+INSERT INTO `t_profil_pfl` (`pfl_nom`, `pfl_prenom`, `pfl_date_de_naissance`, `pfl_adresse`, `pfl_num_de_tel`, `pfl_email`, `pfl_role`, `ville_code_postal`, `cpt_id`) VALUES
+('Maurice', 'Marcelle', '2006-03-31', '8, boulevard de Michaud', '0666542771', 'marcelle.maurice1@maisonjeunes.example.com', 'G', 69000, 1),
+('Chauvin', 'Andree', '2001-06-12', 'avenue Charles Aubert', '0657864027', 'andree.chauvin2@maisonjeunes.example.com', 'G', 13000, 2),
+('Mercier', 'Marc', '2002-03-28', '6, rue de Henry', '0622374072', 'marc.mercier3@maisonjeunes.example.com', 'G', 13000, 3),
+('Martin', 'Helene', '1997-04-25', '6, rue de Guerin', '0612614954', 'helene.martin4@maisonjeunes.example.com', 'G', 13000, 4),
+('Guillaume', 'Laetitia', '2001-02-21', '65, rue Gabriel Coulon', '0684363365', 'laetitia.guillaume5@maisonjeunes.example.com', 'G', 31000, 5),
+('Turpin', 'Christiane', '2002-12-22', '3, chemin Traore', '0669117285', 'christiane.turpin6@maisonjeunes.example.com', 'A', 75000, 6),
+('Aubry', 'Christiane', '2008-11-04', '18, boulevard Etienne', '0661585853', 'christiane.aubry7@maisonjeunes.example.com', 'A', 13000, 7),
+('Caron', 'Marie', '2003-12-26', 'chemin de Weiss', '0679448796', 'marie.caron8@maisonjeunes.example.com', 'A', 44000, 8),
+('Robin', 'Marthe', '2009-02-15', '652, boulevard Allard', '0649655179', 'marthe.robin9@maisonjeunes.example.com', 'A', 44000, 9),
+('Merle', 'Constance', '2000-05-08', '49, avenue Rousset', '0618628964', 'constance.merle10@maisonjeunes.example.com', 'A', 75000, 10),
+('Dumas', 'Luc', '2003-07-20', '10, avenue Raymond Leclercq', '0640675978', 'luc.dumas11@maisonjeunes.example.com', 'A', 75000, 11),
+('Jacquot', 'Josette', '2000-08-07', '25, rue Dumas', '0621282512', 'josette.jacquot12@maisonjeunes.example.com', 'A', 13000, 12),
+('Lelievre', 'Louis', '2000-06-27', '19, chemin Susanne Weiss', '0646496546', 'louis.lelievre13@maisonjeunes.example.com', 'A', 75000, 13),
+('Clement', 'Victoire', '2005-12-24', 'rue Christiane Colin', '0634367415', 'victoire.clement14@maisonjeunes.example.com', 'A', 13000, 14),
+('Gay', 'Sophie', '2005-07-23', '7, avenue Noemi Clement', '0627388652', 'sophie.gay15@maisonjeunes.example.com', 'A', 31000, 15),
+('Pages', 'Hugues', '1997-08-20', '3, avenue de Begue', '0644709914', 'hugues.pages16@maisonjeunes.example.com', 'A', 31000, 16),
+('Rodrigues', 'Juliette', '2008-10-20', '35, boulevard de Payet', '0630047826', 'juliette.rodrigues17@maisonjeunes.example.com', 'A', 44000, 17),
+('Lefebvre', 'Alexandre', '2008-05-05', '9, rue de Gay', '0679092953', 'alexandre.lefebvre18@maisonjeunes.example.com', 'A', 44000, 18),
+('Leclercq', 'Valerie', '2009-08-11', '5, chemin Charrier', '0676385704', 'valerie.leclercq19@maisonjeunes.example.com', 'A', 13000, 19),
+('Guillot', 'Paulette', '2004-09-19', '78, rue Rousset', '0622007414', 'paulette.guillot20@maisonjeunes.example.com', 'A', 13000, 20),
+('Monnier', 'Celine', '2006-01-05', '368, rue de Hardy', '0617721077', 'celine.monnier21@maisonjeunes.example.com', 'A', 69000, 21),
+('Gros', 'Alfred', '2009-08-04', '19, rue Blanchard', '0667085086', 'alfred.gros22@maisonjeunes.example.com', 'A', 75000, 22),
+('Reynaud', 'Laure', '2007-01-30', 'rue de Germain', '0646094290', 'laure.reynaud23@maisonjeunes.example.com', 'A', 75000, 23),
+('Normand', 'Diane', '2003-10-09', '91, rue Aubert', '0695153029', 'diane.normand24@maisonjeunes.example.com', 'A', 75000, 24),
+('Baron', 'Augustin', '2007-11-18', 'avenue de Guilbert', '0644970682', 'augustin.baron25@maisonjeunes.example.com', 'A', 75000, 25),
+('Leroy', 'Patricia', '1995-10-27', '99, boulevard de Bourgeois', '0691628191', 'patricia.leroy26@maisonjeunes.example.com', 'A', 69000, 26),
+('Jacquot', 'Robert', '2002-06-09', '478, boulevard de Poirier', '0618941925', 'robert.jacquot27@maisonjeunes.example.com', 'A', 13000, 27),
+('Vaillant', 'Luc', '2009-01-12', '26, avenue Thomas Legrand', '0626331285', 'luc.vaillant28@maisonjeunes.example.com', 'A', 31000, 28),
+('Leconte', 'Olivier', '2002-01-11', 'chemin Riviere', '0611549722', 'olivier.leconte29@maisonjeunes.example.com', 'A', 13000, 29),
+('Diallo', 'Honore', '2006-12-04', '52, avenue Vasseur', '0684231009', 'honore.diallo30@maisonjeunes.example.com', 'A', 31000, 30),
+('Letellier', 'Etienne', '2001-07-08', '33, avenue de Buisson', '0645951526', 'etienne.letellier31@maisonjeunes.example.com', 'A', 44000, 31),
+('Antoine', 'Yves', '2001-11-28', '25, chemin de Moreau', '0627344259', 'yves.antoine32@maisonjeunes.example.com', 'A', 75000, 32),
+('Maillot', 'Francoise', '2002-07-19', '7, boulevard Laurence Collet', '0680721337', 'francoise.maillot33@maisonjeunes.example.com', 'A', 69000, 33),
+('Blanchet', 'Christophe', '1996-08-30', '2, chemin Augustin Merle', '0624690326', 'christophe.blanchet34@maisonjeunes.example.com', 'A', 69000, 34),
+('Arnaud', 'Richard', '2007-08-08', '74, boulevard Buisson', '0645150991', 'richard.arnaud35@maisonjeunes.example.com', 'A', 75000, 35),
+('Masse', 'Clemence', '2006-08-29', '5, rue Lamy', '0634313000', 'clemence.masse36@maisonjeunes.example.com', 'A', 69000, 36),
+('Legrand', 'Rene', '1995-01-11', '5, boulevard Louis', '0651874911', 'rene.legrand37@maisonjeunes.example.com', 'A', 13000, 37),
+('Mercier', 'Remy', '2009-06-03', 'rue Yves Lenoir', '0681281134', 'remy.mercier38@maisonjeunes.example.com', 'A', 69000, 38),
+('Delattre', 'Rene', '2005-04-27', '9, rue de Masson', '0648917884', 'rene.delattre39@maisonjeunes.example.com', 'A', 31000, 39),
+('Renard', 'Remy', '1995-08-08', '54, rue de Charpentier', '0677120755', 'remy.renard40@maisonjeunes.example.com', 'A', 69000, 40),
+('Cohen', 'Constance', '2006-03-06', '15, rue Alexandre Moreau', '0646308897', 'constance.cohen41@maisonjeunes.example.com', 'A', 13000, 41),
+('Peron', 'Corinne', '2004-02-13', '873, avenue Descamps', '0612437810', 'corinne.peron42@maisonjeunes.example.com', 'A', 13000, 42),
+('Costa', 'Emilie', '2008-12-10', '443, rue Victoire Munoz', '0614959258', 'emilie.costa43@maisonjeunes.example.com', 'A', 75000, 43),
+('Chauveau', 'Luce', '1997-02-13', '30, rue Toussaint', '0612474155', 'luce.chauveau44@maisonjeunes.example.com', 'A', 44000, 44),
+('Traore', 'Pierre', '2002-01-26', '2, avenue de Guillou', '0683960561', 'pierre.traore45@maisonjeunes.example.com', 'A', 69000, 45),
+('Leconte', 'Roland', '2004-12-05', '80, rue Royer', '0679019441', 'roland.leconte46@maisonjeunes.example.com', 'A', 31000, 46),
+('Cohen', 'Adrien', '1999-03-22', '68, rue Ruiz', '0642974546', 'adrien.cohen47@maisonjeunes.example.com', 'A', 31000, 47),
+('Carpentier', 'Agathe', '1997-11-08', 'avenue Emile Ollivier', '0624264840', 'agathe.carpentier48@maisonjeunes.example.com', 'A', 31000, 48),
+('Lopes', 'Constance', '2005-11-26', '18, chemin Blanc', '0698115205', 'constance.lopes49@maisonjeunes.example.com', 'A', 31000, 49),
+('Meunier', 'Andree', '2004-09-22', 'rue Theophile Bailly', '0683270296', 'andree.meunier50@maisonjeunes.example.com', 'A', 31000, 50),
+('Lombard', 'Nicolas', '1996-03-06', '729, avenue Henri Jacquet', '0678006237', 'nicolas.lombard51@maisonjeunes.example.com', 'A', 13000, 51),
+('Ramos', 'Laure', '2005-09-07', '9, avenue de Peron', '0638881120', 'laure.ramos52@maisonjeunes.example.com', 'A', 69000, 52),
+('Bonnin', 'Suzanne', '2003-05-06', '189, boulevard de Mendes', '0655997036', 'suzanne.bonnin53@maisonjeunes.example.com', 'A', 69000, 53),
+('Normand', 'Marine', '2005-09-05', '1, rue Diaz', '0695359381', 'marine.normand54@maisonjeunes.example.com', 'A', 69000, 54),
+('Alves', 'Francois', '2001-02-24', '900, rue de Camus', '0664317606', 'francois.alves55@maisonjeunes.example.com', 'A', 13000, 55),
+('Aubry', 'Adrien', '2002-07-08', 'boulevard de Regnier', '0617299905', 'adrien.aubry56@maisonjeunes.example.com', 'A', 69000, 56),
+('Morin', 'Margaux', '2003-09-10', 'avenue de Fleury', '0611913291', 'margaux.morin57@maisonjeunes.example.com', 'A', 75000, 57),
+('Sanchez', 'Camille', '1999-04-06', '83, avenue Denis Voisin', '0693946251', 'camille.sanchez58@maisonjeunes.example.com', 'A', 13000, 58),
+('Pottier', 'Sebastien', '2007-10-16', 'rue de Garnier', '0667813039', 'sebastien.pottier59@maisonjeunes.example.com', 'A', 69000, 59),
+('Brunel', 'William', '2000-05-21', '39, avenue Bonnet', '0617435808', 'william.brunel60@maisonjeunes.example.com', 'A', 75000, 60),
+('Vallee', 'Rene', '2006-03-05', 'rue de Parent', '0699285347', 'rene.vallee61@maisonjeunes.example.com', 'A', 31000, 61),
+('Camus', 'Stephane', '2006-10-20', '87, rue Emmanuelle Bourgeois', '0677906507', 'stephane.camus62@maisonjeunes.example.com', 'A', 13000, 62),
+('Langlois', 'Emile', '2002-10-15', 'avenue Denis Guillou', '0690366678', 'emile.langlois63@maisonjeunes.example.com', 'A', 69000, 63),
+('Lebreton', 'Rene', '2001-04-28', '21, boulevard Charles', '0649333645', 'rene.lebreton64@maisonjeunes.example.com', 'A', 75000, 64),
+('Alves', 'Gilles', '2005-01-03', '641, avenue Vallee', '0671666730', 'gilles.alves65@maisonjeunes.example.com', 'A', 69000, 65),
+('Carlier', 'Andre', '1997-06-13', 'avenue Anne Hernandez', '0631143713', 'andre.carlier66@maisonjeunes.example.com', 'A', 13000, 66),
+('Petitjean', 'Guy', '2001-10-28', '25, rue Victor Hamel', '0669837566', 'guy.petitjean67@maisonjeunes.example.com', 'A', 75000, 67),
+('Maillot', 'Virginie', '2001-07-08', 'rue Rousset', '0645331886', 'virginie.maillot68@maisonjeunes.example.com', 'A', 13000, 68),
+('Charpentier', 'Philippe', '2001-01-27', 'avenue Jacqueline Garnier', '0654147722', 'philippe.charpentier69@maisonjeunes.example.com', 'A', 44000, 69),
+('Alves', 'Aurelie', '2007-08-07', '5, rue Peltier', '0653423984', 'aurelie.alves70@maisonjeunes.example.com', 'A', 69000, 70),
+('Renault', 'Luce', '1997-04-11', '96, rue Penelope Besson', '0614623360', 'luce.renault71@maisonjeunes.example.com', 'A', 13000, 71),
+('Gilbert', 'Antoine', '2008-07-22', '98, rue Girard', '0639241460', 'antoine.gilbert72@maisonjeunes.example.com', 'A', 13000, 72),
+('Foucher', 'Antoinette', '2002-05-31', '84, boulevard Rodriguez', '0634556192', 'antoinette.foucher73@maisonjeunes.example.com', 'A', 75000, 73),
+('Picard', 'Charlotte', '2001-10-19', '54, chemin de Lebon', '0655007604', 'charlotte.picard74@maisonjeunes.example.com', 'A', 31000, 74),
+('Begue', 'Olivier', '1999-11-11', '361, rue de Sanchez', '0621259600', 'olivier.begue75@maisonjeunes.example.com', 'A', 31000, 75),
+('Guillaume', 'Constance', '2008-07-21', '637, avenue Guillaume Levy', '0647437199', 'constance.guillaume76@maisonjeunes.example.com', 'A', 44000, 76),
+('Olivier', 'Patrick', '1996-04-14', '28, rue Alexandrie Poirier', '0698049228', 'patrick.olivier77@maisonjeunes.example.com', 'A', 69000, 77),
+('Colas', 'Luc', '1995-01-31', '76, boulevard de Lacroix', '0643310074', 'luc.colas78@maisonjeunes.example.com', 'A', 44000, 78),
+('Mallet', 'Richard', '2000-06-30', 'chemin Hortense Alves', '0610664449', 'richard.mallet79@maisonjeunes.example.com', 'A', 75000, 79),
+('Marchand', 'Marianne', '2003-04-22', '51, avenue Alexandre', '0645456120', 'marianne.marchand80@maisonjeunes.example.com', 'A', 75000, 80),
+('Imbert', 'Caroline', '2002-02-02', '3, avenue Lacombe', '0629309252', 'caroline.imbert81@maisonjeunes.example.com', 'A', 31000, 81),
+('Salmon', 'Suzanne', '2002-10-17', '20, boulevard Dominique Bigot', '0688759061', 'suzanne.salmon82@maisonjeunes.example.com', 'A', 75000, 82),
+('Pons', 'Paul', '2008-01-25', 'rue Fernandes', '0662878918', 'paul.pons83@maisonjeunes.example.com', 'A', 75000, 83),
+('Barbe', 'Maggie', '1996-08-05', '91, rue Marchand', '0650217813', 'maggie.barbe84@maisonjeunes.example.com', 'A', 13000, 84),
+('Rey', 'Helene', '1995-05-20', '52, avenue de Rocher', '0694512860', 'helene.rey85@maisonjeunes.example.com', 'A', 69000, 85),
+('Salmon', 'Frederic', '1996-06-07', 'boulevard Isabelle Olivier', '0621339077', 'frederic.salmon86@maisonjeunes.example.com', 'A', 44000, 86),
+('Chevallier', 'Raymond', '1998-07-19', '1, chemin de Jacques', '0681026618', 'raymond.chevallier87@maisonjeunes.example.com', 'A', 69000, 87),
+('Lopes', 'Thomas', '2005-09-16', '48, rue de Leroy', '0698254017', 'thomas.lopes88@maisonjeunes.example.com', 'A', 44000, 88),
+('Bouchet', 'Maryse', '2005-10-17', '1, avenue Parent', '0662280015', 'maryse.bouchet89@maisonjeunes.example.com', 'A', 13000, 89),
+('Jourdan', 'Astrid', '1996-02-14', '66, avenue Fontaine', '0676329160', 'astrid.jourdan90@maisonjeunes.example.com', 'A', 69000, 90),
+('Grenier', 'Yves', '2006-12-18', '46, chemin Rousset', '0648141534', 'yves.grenier91@maisonjeunes.example.com', 'A', 44000, 91),
+('Bodin', 'Daniel', '1998-03-27', '44, avenue Louis', '0696331453', 'daniel.bodin92@maisonjeunes.example.com', 'A', 69000, 92),
+('Aubry', 'Patricia', '1999-10-05', 'avenue de Bourdon', '0615877134', 'patricia.aubry93@maisonjeunes.example.com', 'A', 44000, 93),
+('Lemoine', 'Maurice', '2002-12-30', '3, rue Marcel Laurent', '0694199092', 'maurice.lemoine94@maisonjeunes.example.com', 'A', 31000, 94),
+('Godard', 'Guy', '2001-10-23', 'rue de Gonzalez', '0677852569', 'guy.godard95@maisonjeunes.example.com', 'A', 69000, 95),
+('Carlier', 'Catherine', '2006-11-09', '2, chemin Aubert', '0680297512', 'catherine.carlier96@maisonjeunes.example.com', 'A', 44000, 96),
+('Gonzalez', 'Marcelle', '2003-09-02', '50, avenue de Besson', '0686300026', 'marcelle.gonzalez97@maisonjeunes.example.com', 'A', 75000, 97),
+('Remy', 'Capucine', '1997-08-15', 'rue Guyot', '0688391409', 'capucine.remy98@maisonjeunes.example.com', 'A', 69000, 98),
+('Faure', 'Adele', '2001-11-21', 'rue de Gillet', '0621420815', 'adele.faure99@maisonjeunes.example.com', 'A', 75000, 99),
+('Hamon', 'Pauline', '2008-09-20', '11, avenue de Pierre', '0615618636', 'pauline.hamon100@maisonjeunes.example.com', 'A', 69000, 100),
+('Guichard', 'Elodie', '2002-05-03', '85, avenue Hoarau', '0695512782', 'elodie.guichard101@maisonjeunes.example.com', 'A', 13000, 101),
+('Toussaint', 'Pauline', '2001-08-18', 'rue Celina Andre', '0624081650', 'pauline.toussaint102@maisonjeunes.example.com', 'A', 31000, 102),
+('Bonnet', 'Pierre', '1998-01-22', '6, chemin Xavier Chauvet', '0670584027', 'pierre.bonnet103@maisonjeunes.example.com', 'A', 44000, 103),
+('Bertrand', 'Remy', '2007-06-11', '54, boulevard Couturier', '0616815618', 'remy.bertrand104@maisonjeunes.example.com', 'A', 75000, 104),
+('Francois', 'Andre', '2008-10-17', '8, avenue de Diallo', '0694050692', 'andre.francois105@maisonjeunes.example.com', 'A', 44000, 105),
+('Collin', 'Sophie', '1999-01-05', '82, rue Rousset', '0642824244', 'sophie.collin106@maisonjeunes.example.com', 'A', 31000, 106),
+('Bailly', 'Valentine', '2006-07-08', '635, chemin Sabine Godard', '0645405683', 'valentine.bailly107@maisonjeunes.example.com', 'A', 75000, 107),
+('Chevalier', 'Denise', '1998-02-06', '73, rue Leduc', '0671330592', 'denise.chevalier108@maisonjeunes.example.com', 'A', 75000, 108),
+('Courtois', 'Emilie', '2000-04-14', '21, boulevard Emile Guillaume', '0677507631', 'emilie.courtois109@maisonjeunes.example.com', 'A', 44000, 109),
+('Pereira', 'Astrid', '2003-03-23', '42, avenue Jacques', '0622340236', 'astrid.pereira110@maisonjeunes.example.com', 'A', 44000, 110),
+('Legendre', 'Margot', '1998-09-27', '514, boulevard Rene Guichard', '0618865128', 'margot.legendre111@maisonjeunes.example.com', 'A', 31000, 111),
+('Adam', 'Nathalie', '1999-03-04', '33, rue Brunet', '0643848842', 'nathalie.adam112@maisonjeunes.example.com', 'A', 75000, 112),
+('Carre', 'Ines', '1997-12-11', '7, rue Corinne Laine', '0645642621', 'ines.carre113@maisonjeunes.example.com', 'A', 69000, 113),
+('Grondin', 'Manon', '2008-06-30', 'avenue de Da Silva', '0637543830', 'manon.grondin114@maisonjeunes.example.com', 'A', 69000, 114),
+('Henry', 'Aime', '2002-10-27', '15, rue Georges Girard', '0697232433', 'aime.henry115@maisonjeunes.example.com', 'A', 31000, 115),
+('Aubert', 'Josephine', '2008-10-29', '61, rue de Pons', '0676296682', 'josephine.aubert116@maisonjeunes.example.com', 'A', 31000, 116),
+('Marion', 'Raymond', '2007-12-05', '2, boulevard de Lacombe', '0620299851', 'raymond.marion117@maisonjeunes.example.com', 'A', 31000, 117),
+('Legendre', 'Adele', '1998-06-12', 'chemin Guy Bertrand', '0648563325', 'adele.legendre118@maisonjeunes.example.com', 'A', 75000, 118),
+('Martins', 'Pierre', '1995-05-24', '60, chemin Julien Legendre', '0692808850', 'pierre.martins119@maisonjeunes.example.com', 'A', 69000, 119),
+('Langlois', 'Denis', '1998-03-15', 'boulevard Christine Andre', '0620398091', 'denis.langlois120@maisonjeunes.example.com', 'A', 44000, 120),
+('Cordier', 'Eugene', '2008-04-13', '228, rue de Chauvin', '0629787058', 'eugene.cordier121@maisonjeunes.example.com', 'A', 13000, 121),
+('Grenier', 'Richard', '2001-09-18', '16, boulevard Agathe Legros', '0644083287', 'richard.grenier122@maisonjeunes.example.com', 'A', 13000, 122),
+('Delattre', 'Alfred', '2009-06-12', '76, rue Gay', '0693369442', 'alfred.delattre123@maisonjeunes.example.com', 'A', 44000, 123),
+('Barbier', 'Audrey', '1996-09-03', 'boulevard Aimee Jacques', '0627910149', 'audrey.barbier124@maisonjeunes.example.com', 'A', 75000, 124),
+('Leleu', 'Isaac', '1996-12-14', 'boulevard Blanchard', '0674749410', 'isaac.leleu125@maisonjeunes.example.com', 'A', 75000, 125),
+('Clerc', 'Susan', '2001-06-29', 'boulevard de Lemaitre', '0675202710', 'susan.clerc126@maisonjeunes.example.com', 'A', 13000, 126),
+('Gallet', 'Corinne', '1997-08-30', '34, rue de Mercier', '0623357223', 'corinne.gallet127@maisonjeunes.example.com', 'A', 69000, 127),
+('Nicolas', 'Alice', '2003-02-01', '12, chemin Bernard Raynaud', '0675714920', 'alice.nicolas128@maisonjeunes.example.com', 'A', 13000, 128),
+('Bousquet', 'Amelie', '1996-03-18', '723, rue de Reynaud', '0679328247', 'amelie.bousquet129@maisonjeunes.example.com', 'A', 13000, 129),
+('Vidal', 'Genevieve', '1998-06-15', 'boulevard Hugues Jacob', '0672365992', 'genevieve.vidal130@maisonjeunes.example.com', 'A', 31000, 130),
+('Pelletier', 'Gerard', '1997-04-14', '90, rue de Martineau', '0672590981', 'gerard.pelletier131@maisonjeunes.example.com', 'A', 75000, 131),
+('Breton', 'Georges', '2001-05-17', '58, avenue de Le Gall', '0683695801', 'georges.breton132@maisonjeunes.example.com', 'A', 69000, 132),
+('Guillon', 'Paul', '2001-12-26', '97, rue Alphonse Bernard', '0651832264', 'paul.guillon133@maisonjeunes.example.com', 'A', 75000, 133),
+('Maurice', 'Claudine', '2002-08-29', '89, avenue Alexandre', '0673477626', 'claudine.maurice134@maisonjeunes.example.com', 'A', 75000, 134),
+('Gautier', 'Daniel', '1996-12-05', '25, boulevard Danielle Descamps', '0648867961', 'daniel.gautier135@maisonjeunes.example.com', 'A', 31000, 135),
+('Fournier', 'Augustin', '2005-07-27', '6, boulevard de Chevalier', '0620262856', 'augustin.fournier136@maisonjeunes.example.com', 'A', 44000, 136),
+('Vincent', 'Odette', '2003-04-26', '20, rue de Leclercq', '0670324287', 'odette.vincent137@maisonjeunes.example.com', 'A', 13000, 137),
+('Payet', 'Claudine', '1999-08-22', '61, chemin de Leroux', '0661921906', 'claudine.payet138@maisonjeunes.example.com', 'A', 69000, 138),
+('Breton', 'Laetitia', '1999-06-03', '94, rue Jeanne Charles', '0638280856', 'laetitia.breton139@maisonjeunes.example.com', 'A', 75000, 139),
+('Chauvet', 'Corinne', '1998-10-13', '40, avenue Renard', '0688043900', 'corinne.chauvet140@maisonjeunes.example.com', 'A', 75000, 140),
+('Bousquet', 'Roger', '2006-04-22', '52, boulevard Rousseau', '0629024111', 'roger.bousquet141@maisonjeunes.example.com', 'A', 44000, 141),
+('Bousquet', 'Agnes', '2009-08-05', '289, boulevard Louise Carlier', '0645139404', 'agnes.bousquet142@maisonjeunes.example.com', 'A', 13000, 142),
+('Gallet', 'Susanne', '2001-01-23', '35, chemin Paulette Faure', '0627797951', 'susanne.gallet143@maisonjeunes.example.com', 'A', 44000, 143),
+('Pichon', 'Michel', '1997-10-01', '5, chemin de Ruiz', '0694781070', 'michel.pichon144@maisonjeunes.example.com', 'A', 44000, 144),
+('Riou', 'Isabelle', '2006-01-13', '1, rue Charpentier', '0647522967', 'isabelle.riou145@maisonjeunes.example.com', 'A', 75000, 145),
+('Chauvet', 'Lorraine', '2002-02-04', '350, rue Juliette Guibert', '0659014774', 'lorraine.chauvet146@maisonjeunes.example.com', 'A', 69000, 146),
+('Lambert', 'Alphonse', '1995-09-01', 'chemin de Bailly', '0676825389', 'alphonse.lambert147@maisonjeunes.example.com', 'A', 31000, 147),
+('Gautier', 'Dorothee', '2000-10-26', '56, rue de Martins', '0662892592', 'dorothee.gautier148@maisonjeunes.example.com', 'A', 75000, 148),
+('Poulain', 'Laurence', '2008-11-01', '12, rue Lebreton', '0631349379', 'laurence.poulain149@maisonjeunes.example.com', 'A', 75000, 149),
+('Pereira', 'Christophe', '2005-08-07', '56, rue Imbert', '0675994334', 'christophe.pereira150@maisonjeunes.example.com', 'A', 31000, 150),
+('Guilbert', 'Adele', '2004-11-10', '979, avenue de Menard', '0664414461', 'adele.guilbert151@maisonjeunes.example.com', 'A', 13000, 151),
+('Gaillard', 'Adrien', '1995-06-29', 'rue de Lebon', '0628885403', 'adrien.gaillard152@maisonjeunes.example.com', 'A', 31000, 152),
+('Lemoine', 'Noel', '1997-06-14', 'rue Raymond', '0656165549', 'noel.lemoine153@maisonjeunes.example.com', 'A', 31000, 153),
+('Courtois', 'Margaux', '1998-02-05', '93, boulevard de Jourdan', '0652423277', 'margaux.courtois154@maisonjeunes.example.com', 'A', 75000, 154),
+('Clerc', 'Arnaude', '2008-07-31', '58, chemin Toussaint', '0654469603', 'arnaude.clerc155@maisonjeunes.example.com', 'A', 75000, 155),
+('Rousseau', 'Monique', '2008-01-24', '706, avenue de Faure', '0653560039', 'monique.rousseau156@maisonjeunes.example.com', 'A', 13000, 156),
+('Traore', 'Marcelle', '2002-06-10', '51, rue Denis', '0663453493', 'marcelle.traore157@maisonjeunes.example.com', 'A', 75000, 157),
+('Daniel', 'Oceane', '2006-07-27', '5, boulevard de Potier', '0636271930', 'oceane.daniel158@maisonjeunes.example.com', 'A', 75000, 158),
+('Nguyen', 'Marianne', '2008-02-27', '44, boulevard Garcia', '0648900721', 'marianne.nguyen159@maisonjeunes.example.com', 'A', 13000, 159),
+('Roy', 'Raymond', '1998-10-05', '62, avenue Boulanger', '0659958791', 'raymond.roy160@maisonjeunes.example.com', 'A', 75000, 160),
+('Brunel', 'Olivier', '2001-03-13', '977, rue de Michel', '0662734062', 'olivier.brunel161@maisonjeunes.example.com', 'A', 31000, 161),
+('Nguyen', 'Monique', '1998-09-20', '73, boulevard de Garnier', '0689077952', 'monique.nguyen162@maisonjeunes.example.com', 'A', 75000, 162),
+('Moreno', 'Jean', '1997-03-15', 'rue Gautier', '0658413585', 'jean.moreno163@maisonjeunes.example.com', 'A', 31000, 163),
+('Loiseau', 'Isaac', '2000-08-10', '1, rue Jacquot', '0646930712', 'isaac.loiseau164@maisonjeunes.example.com', 'A', 75000, 164),
+('Weiss', 'Luce', '1995-06-20', '1, boulevard Ledoux', '0647666555', 'luce.weiss165@maisonjeunes.example.com', 'A', 75000, 165),
+('Marchal', 'Luc', '2008-08-26', '7, rue Leclerc', '0616927985', 'luc.marchal166@maisonjeunes.example.com', 'A', 13000, 166),
+('Martins', 'Frederic', '1995-04-27', 'rue de Hamel', '0695223357', 'frederic.martins167@maisonjeunes.example.com', 'A', 69000, 167),
+('Lefort', 'Louise', '1999-08-19', '3, rue Cousin', '0643463796', 'louise.lefort168@maisonjeunes.example.com', 'A', 13000, 168),
+('Julien', 'Yves', '2001-12-14', '6, chemin Benoit Auger', '0668551241', 'yves.julien169@maisonjeunes.example.com', 'A', 44000, 169),
+('Samson', 'Alexandrie', '2000-03-14', '174, rue Bernadette Paul', '0652359299', 'alexandrie.samson170@maisonjeunes.example.com', 'A', 69000, 170),
+('Leleu', 'Eugene', '2000-08-22', '9, rue de Delannoy', '0660110092', 'eugene.leleu171@maisonjeunes.example.com', 'A', 31000, 171),
+('Robin', 'Hortense', '2008-09-09', '16, rue de Herve', '0613893832', 'hortense.robin172@maisonjeunes.example.com', 'A', 31000, 172),
+('Ledoux', 'Odette', '1995-08-30', 'avenue Etienne Marin', '0684377153', 'odette.ledoux173@maisonjeunes.example.com', 'A', 44000, 173),
+('Lemonnier', 'Stephanie', '2008-10-13', '69, chemin de Verdier', '0637304692', 'stephanie.lemonnier174@maisonjeunes.example.com', 'A', 75000, 174),
+('Leroux', 'Roland', '2008-08-11', '37, rue Marin', '0616640560', 'roland.leroux175@maisonjeunes.example.com', 'A', 31000, 175),
+('Grenier', 'Gabrielle', '2008-02-17', 'chemin de Hamon', '0670513461', 'gabrielle.grenier176@maisonjeunes.example.com', 'A', 44000, 176),
+('Gauthier', 'Andree', '2001-06-15', '7, rue de Guichard', '0628598890', 'andree.gauthier177@maisonjeunes.example.com', 'A', 13000, 177),
+('Leclerc', 'Thibaut', '1999-03-22', '782, rue de Jacques', '0675172784', 'thibaut.leclerc178@maisonjeunes.example.com', 'A', 75000, 178),
+('Marchand', 'Elisabeth', '2004-11-06', '605, rue de Lebreton', '0683834272', 'elisabeth.marchand179@maisonjeunes.example.com', 'A', 69000, 179),
+('Peltier', 'Francoise', '2007-05-14', '87, chemin de Delorme', '0632919395', 'francoise.peltier180@maisonjeunes.example.com', 'A', 31000, 180),
+('Grondin', 'Gilbert', '2000-06-04', '48, chemin Olivie Fischer', '0665682459', 'gilbert.grondin181@maisonjeunes.example.com', 'A', 13000, 181),
+('Maurice', 'Honore', '2007-01-18', '95, rue Noel Millet', '0647815313', 'honore.maurice182@maisonjeunes.example.com', 'A', 13000, 182),
+('Roche', 'Raymond', '2007-02-21', 'rue Pierre', '0644325214', 'raymond.roche183@maisonjeunes.example.com', 'A', 13000, 183),
+('Jacob', 'Henri', '1997-04-07', '56, rue Diaz', '0664520484', 'henri.jacob184@maisonjeunes.example.com', 'A', 69000, 184),
+('Gautier', 'Roger', '1998-04-03', '10, avenue Marine Louis', '0650377563', 'roger.gautier185@maisonjeunes.example.com', 'A', 31000, 185),
+('Charrier', 'Louise', '1999-10-13', '3, boulevard Nathalie Lebon', '0684802452', 'louise.charrier186@maisonjeunes.example.com', 'A', 31000, 186),
+('Thomas', 'Nicole', '1998-11-12', '496, boulevard de Rolland', '0626071569', 'nicole.thomas187@maisonjeunes.example.com', 'A', 69000, 187),
+('Potier', 'Jules', '2005-08-28', 'avenue Thomas Bertin', '0696329518', 'jules.potier188@maisonjeunes.example.com', 'A', 69000, 188),
+('Techer', 'Martine', '1996-05-29', '36, avenue Christine Pineau', '0620089226', 'martine.techer189@maisonjeunes.example.com', 'A', 69000, 189),
+('Lefebvre', 'Laurence', '2009-05-07', '125, avenue Franck Morel', '0677190037', 'laurence.lefebvre190@maisonjeunes.example.com', 'A', 31000, 190),
+('Deschamps', 'Emilie', '1998-06-13', '68, boulevard Pineau', '0683871631', 'emilie.deschamps191@maisonjeunes.example.com', 'A', 69000, 191),
+('Allard', 'Lucas', '2006-12-12', '905, avenue Nicole Pineau', '0670798761', 'lucas.allard192@maisonjeunes.example.com', 'A', 13000, 192),
+('Lacroix', 'Marianne', '1997-11-14', '619, rue de Fleury', '0670392668', 'marianne.lacroix193@maisonjeunes.example.com', 'A', 31000, 193),
+('Paris', 'Alex', '2001-07-17', 'rue Humbert', '0628736266', 'alex.paris194@maisonjeunes.example.com', 'A', 44000, 194),
+('De Oliveira', 'Lorraine', '2006-08-15', '59, rue Bailly', '0635824443', 'lorraine.de oliveira195@maisonjeunes.example.com', 'A', 69000, 195),
+('Traore', 'Andree', '2003-09-17', '47, rue Diallo', '0622175495', 'andree.traore196@maisonjeunes.example.com', 'A', 69000, 196),
+('Muller', 'Suzanne', '2008-04-29', '97, rue de Rodrigues', '0655896454', 'suzanne.muller197@maisonjeunes.example.com', 'A', 44000, 197),
+('Benard', 'Margot', '2005-08-11', '94, rue de Valette', '0622226475', 'margot.benard198@maisonjeunes.example.com', 'A', 13000, 198),
+('Lelievre', 'Adrienne', '2008-01-28', '56, rue Christine Bernard', '0642095026', 'adrienne.lelievre199@maisonjeunes.example.com', 'A', 13000, 199),
+('Mace', 'Susanne', '1999-07-12', '64, avenue Aurelie Ferrand', '0644676165', 'susanne.mace200@maisonjeunes.example.com', 'A', 44000, 200),
+('jaber', 'julie', '2003-12-12', 'France', '0635326587', 'juju@gmail.com', 'G', 13000, 240),
+('jaber', 'elham', '2003-06-23', 'france', '0635399874', 'jaber@gmail.com', 'A', 13000, 251),
+('lafontaine', 'marie', '1998-02-02', 'france', '0236359874', 'marie@gmail.com', 'A', 13000, 252),
+('farah', 'joseph', '2003-02-02', 'france', '0236359878', 'farah@gmail.com', 'A', 13000, 253),
+('Diop', 'pape', '2004-02-02', 'france', '0789653241', 'diop@gmail.com', 'A', 13000, 254),
+('momo', 'momo', '1998-02-03', 'france', '0236359844', 'moe@gmail.com', 'A', 13000, 260),
+('farah', 'rebecca', '2003-02-02', 'france', '0278359874', 'rf25@gmail.com', 'G', 13000, 262),
+('jaber', 'fadi', '1993-02-02', 'france', '0236352174', 'fadi@gmail.com', 'G', 13000, 263),
+('bjorc', 'amandine', '1998-02-02', 'france', '0236759874', 'ama@gmail.com', 'A', 13000, 264),
+('Marc', 'Valerie', '1975-01-01', 'Brest', '0265983564', 'vmarc@gmail.com', 'G', 13000, 265);
+
+-- --------------------------------------------------------
+
+--
+-- Structure de la table `t_reservation_res`
+--
+
+CREATE TABLE `t_reservation_res` (
+  `res_id` int(11) NOT NULL,
+  `res_date` date NOT NULL,
+  `res_heure_debut` time NOT NULL,
+  `res_heure_fin` time DEFAULT NULL,
+  `res_nom` varchar(80) NOT NULL,
+  `res_etat` char(1) NOT NULL,
+  `ress_id` int(11) NOT NULL,
+  `res_bilan` varchar(500) DEFAULT NULL
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
+
+--
+-- Déchargement des données de la table `t_reservation_res`
+--
+
+INSERT INTO `t_reservation_res` (`res_id`, `res_date`, `res_heure_debut`, `res_heure_fin`, `res_nom`, `res_etat`, `ress_id`, `res_bilan`) VALUES
+(1, '2025-11-30', '17:00:00', '18:00:00', 'Atelier cuisine santé', 'A', 1, 'Tout était au top!'),
+(2, '2025-12-15', '15:00:00', '16:00:00', 'Initiation informatique', 'A', 2, NULL),
+(3, '2025-11-30', '18:00:00', '19:00:00', 'Stage de danse moderne', 'A', 3, NULL),
+(6, '2025-11-27', '11:00:00', '18:00:00', 'Soirée jeux de société', 'A', 6, NULL),
+(7, '2025-12-27', '14:00:00', '14:00:00', 'Cours de cuisine avancée', 'A', 1, NULL),
+(8, '2025-12-15', '16:00:00', '17:00:00', 'Atelier multimédia', 'A', 2, NULL),
+(9, '2025-12-15', '19:00:00', '20:00:00', 'Danse en groupe débutants', 'A', 3, NULL),
+(55, '2025-11-27', '10:00:00', '11:00:00', 'programmer', 'A', 1, NULL),
+(56, '2025-12-10', '14:00:00', '15:00:00', 'Réunion projet', 'D', 2, NULL),
+(57, '2025-12-03', '17:00:00', '18:00:00', 'Ensemble', 'A', 6, NULL),
+(58, '2025-12-03', '17:00:00', '18:00:00', 'Ensemble', 'A', 10, NULL);
+
+-- --------------------------------------------------------
+
+--
+-- Structure de la table `t_ressource_ress`
+--
+
+CREATE TABLE `t_ressource_ress` (
+  `ress_id` int(11) NOT NULL,
+  `ress_image` varchar(250) NOT NULL,
+  `ress_nb_max` varchar(45) NOT NULL,
+  `ress_liste_materiel` varchar(600) NOT NULL,
+  `ress_nom` varchar(250) NOT NULL
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
+
+--
+-- Déchargement des données de la table `t_ressource_ress`
+--
+
+INSERT INTO `t_ressource_ress` (`ress_id`, `ress_image`, `ress_nb_max`, `ress_liste_materiel`, `ress_nom`) VALUES
+(1, 'templateprivé/img/default.png', '20', 'Four, Ustensiles, Plans de travail', 'Atelier Cuisine'),
+(2, 'templateprivé/img/default.png', '16', 'PC , tables , écran , cables , caméra, ', 'Salle Informatique'),
+(3, 'templateprivé/img/default.png', '30', 'Sono, Miroirs, Barres', 'Salle de Danse'),
+(6, 'templateprivé/img/default.png', '50', 'Tables, Chaises, Sono', 'Salle Polyvalente'),
+(7, 'templateprivé/img/default.png', '56', 'écran 3D et chaises , avec des lampes ', 'atelier de limagination'),
+(9, 'templateprivé/img/default.png', '1', 'cauchemar', 'atelier de cauchemar'),
+(10, 'templateprivé/img/default.png', '5', 'légumes , nourriture , ...', 'salle de course'),
+(18, 'templateprivé/img/default.png', '200', 'balles', 'salle de bowling'),
+(19, 'templateprivé/img/default.png', '200', 'balles , biere, drinks', 'salle de bowling'),
+(20, 'templateprivé/img/default.png', '200', 'en cours ....', 'salle de bowling'),
+(25, 'templateprivé/img/default.png', '1', 'en cours', 'atelier de cauchemar');
+
+--
+-- Déclencheurs `t_ressource_ress`
+--
+DELIMITER $$
+CREATE TRIGGER `trg_delete_ressource` BEFORE DELETE ON `t_ressource_ress` FOR EACH ROW BEGIN
+    -- 1. Supprimer toutes les inscriptions liées à cette ressource
+    DELETE FROM t_inscription_ins
+    WHERE res_id IN (
+        SELECT res_id
+        
+        FROM t_reservation_res
+        WHERE ress_id = OLD.ress_id
+    );
+       DELETE FROM t_assosiaction_asso
+        WHERE ress_id = OLD.ress_id
+    ;
+
+    -- 2. Supprimer les réservations liées à cette ressource
+    DELETE FROM t_reservation_res
+    WHERE ress_id = OLD.ress_id;
+
+END
+$$
+DELIMITER ;
+DELIMITER $$
+CREATE TRIGGER `trg_set_image_before_insert` BEFORE INSERT ON `t_ressource_ress` FOR EACH ROW BEGIN
+    -- Si aucune image n'est fournie lors de l'insertion
+    IF NEW.ress_image IS NULL OR NEW.ress_image = '' THEN
+
+      
+
+        -- Générer automatiquement l'URL de l'image
+        SET NEW.ress_image = CONCAT('templateprivé/img/default.png');
+
+    END IF;
+END
+$$
+DELIMITER ;
+
+-- --------------------------------------------------------
+
+--
+-- Structure de la table `t_reunion_reu`
+--
+
+CREATE TABLE `t_reunion_reu` (
+  `reu_id` int(11) NOT NULL,
+  `reu_salle` varchar(100) NOT NULL,
+  `reu_date` date NOT NULL,
+  `reu_heure` datetime NOT NULL,
+  `reu_titre` varchar(100) NOT NULL
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
+
+--
+-- Déchargement des données de la table `t_reunion_reu`
+--
+
+INSERT INTO `t_reunion_reu` (`reu_id`, `reu_salle`, `reu_date`, `reu_heure`, `reu_titre`) VALUES
+(1, 'Salle de réunion initiale ', '2025-10-31', '2025-10-31 17:00:00', 'Administratif'),
+(3, 'Salle de données', '2025-11-27', '2025-11-27 19:00:00', 'Modification base de données'),
+(5, 'Salle de \"jour\"', '2025-11-18', '2025-11-18 17:00:00', 'Mise à jour du site');
+
+--
+-- Déclencheurs `t_reunion_reu`
+--
+DELIMITER $$
+CREATE TRIGGER `trg_avant_supp_reunion` BEFORE DELETE ON `t_reunion_reu` FOR EACH ROW BEGIN
+
+    DELETE FROM t_document_doc
+    WHERE reu_id = OLD.reu_id;
+
+    DELETE FROM t_participation_par
+    WHERE reu_id = OLD.reu_id;
+END
+$$
+DELIMITER ;
+
+-- --------------------------------------------------------
+
+--
+-- Structure de la table `t_ville_ville`
+--
+
+CREATE TABLE `t_ville_ville` (
+  `ville_code_postal` int(11) NOT NULL,
+  `ville_nom` varchar(80) NOT NULL
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
+
+--
+-- Déchargement des données de la table `t_ville_ville`
+--
+
+INSERT INTO `t_ville_ville` (`ville_code_postal`, `ville_nom`) VALUES
+(13000, 'Marseille'),
+(31000, 'Toulouse'),
+(44000, 'Nantes'),
+(69000, 'Lyon'),
+(75000, 'Paris');
+
+-- --------------------------------------------------------
+
+--
+-- Doublure de structure pour la vue `v_reservations_details`
+-- (Voir ci-dessous la vue réelle)
+--
+CREATE TABLE `v_reservations_details` (
+`ress_nom` varchar(250)
+,`res_id` int(11)
+,`res_date` date
+,`res_heure_debut` time
+,`res_heure_fin` time
+,`res_bilan` varchar(500)
+,`res_etat` char(1)
+,`participants` mediumtext
+,`responsable` varchar(45)
+);
+
+-- --------------------------------------------------------
+
+--
+-- Structure de la vue `comptes_actifs`
+--
+DROP TABLE IF EXISTS `comptes_actifs`;
+
+CREATE ALGORITHM=UNDEFINED DEFINER=`e22110297sql`@`%` SQL SECURITY DEFINER VIEW `comptes_actifs`  AS SELECT `t_compte_cpt`.`cpt_id` AS `cpt_id`, `t_compte_cpt`.`cpt_mot_de_passe` AS `cpt_mot_de_passe`, `t_compte_cpt`.`cpt_pseudo` AS `cpt_pseudo`, `t_compte_cpt`.`cpt_etat` AS `cpt_etat` FROM `t_compte_cpt` WHERE `t_compte_cpt`.`cpt_etat` = 'A' ;
+
+-- --------------------------------------------------------
+
+--
+-- Structure de la vue `v_reservations_details`
+--
+DROP TABLE IF EXISTS `v_reservations_details`;
+
+CREATE ALGORITHM=UNDEFINED DEFINER=`e22110297sql`@`%` SQL SECURITY DEFINER VIEW `v_reservations_details`  AS SELECT `t_ressource_ress`.`ress_nom` AS `ress_nom`, `t_reservation_res`.`res_id` AS `res_id`, `t_reservation_res`.`res_date` AS `res_date`, `t_reservation_res`.`res_heure_debut` AS `res_heure_debut`, `t_reservation_res`.`res_heure_fin` AS `res_heure_fin`, `t_reservation_res`.`res_bilan` AS `res_bilan`, `t_reservation_res`.`res_etat` AS `res_etat`, (select group_concat(`t_compte_cpt`.`cpt_pseudo` separator ', ') from (`t_inscription_ins` join `t_compte_cpt` on(`t_inscription_ins`.`cpt_id` = `t_compte_cpt`.`cpt_id`)) where `t_inscription_ins`.`res_id` = `t_reservation_res`.`res_id`) AS `participants`, (select `t_compte_cpt`.`cpt_pseudo` from ((`t_inscription_ins` join `t_compte_cpt` on(`t_inscription_ins`.`cpt_id` = `t_compte_cpt`.`cpt_id`)) join `t_profil_pfl` on(`t_inscription_ins`.`cpt_id` = `t_profil_pfl`.`cpt_id`)) where `t_inscription_ins`.`res_id` = `t_reservation_res`.`res_id` and `t_inscription_ins`.`ins_role` = 'G' limit 1) AS `responsable` FROM (`t_ressource_ress` join `t_reservation_res` on(`t_ressource_ress`.`ress_id` = `t_reservation_res`.`ress_id`)) ;
+
+--
+-- Index pour les tables déchargées
+--
+
+--
+-- Index pour la table `t_actualite_actu`
+--
+ALTER TABLE `t_actualite_actu`
+  ADD PRIMARY KEY (`actu_id`),
+  ADD KEY `fk_t_actualite_actu_t_compte_cpt1_idx` (`cpt_id`);
+
+--
+-- Index pour la table `t_assosiaction_asso`
+--
+ALTER TABLE `t_assosiaction_asso`
+  ADD PRIMARY KEY (`ress_id`,`indis_id`),
+  ADD KEY `fk_t_assosiaction_asso_t_indisponibilite_indis1_idx` (`indis_id`);
+
+--
+-- Index pour la table `t_compte_cpt`
+--
+ALTER TABLE `t_compte_cpt`
+  ADD PRIMARY KEY (`cpt_id`),
+  ADD UNIQUE KEY `cpt_pseudo_UNIQUE` (`cpt_pseudo`),
+  ADD UNIQUE KEY `cpt_mot_de_passe_UNIQUE` (`cpt_mot_de_passe`);
+
+--
+-- Index pour la table `t_document_doc`
+--
+ALTER TABLE `t_document_doc`
+  ADD PRIMARY KEY (`doc_id`),
+  ADD KEY `fk_t_document_doc_t_reunion_reu1_idx` (`reu_id`);
+
+--
+-- Index pour la table `t_indisponibilite_indis`
+--
+ALTER TABLE `t_indisponibilite_indis`
+  ADD PRIMARY KEY (`indis_id`),
+  ADD KEY `fk_t_indisponibilite_indis_t_motif_mot1_idx` (`motif_id`);
+
+--
+-- Index pour la table `t_inscription_ins`
+--
+ALTER TABLE `t_inscription_ins`
+  ADD PRIMARY KEY (`cpt_id`,`res_id`),
+  ADD KEY `fk_t_ass_cpt_res_t_compte_cpt1_idx` (`cpt_id`),
+  ADD KEY `fk_t_ass_cpt_res_t_reservation_res1_idx` (`res_id`);
+
+--
+-- Index pour la table `t_message_mess`
+--
+ALTER TABLE `t_message_mess`
+  ADD PRIMARY KEY (`mess_id`),
+  ADD KEY `fk_t_message_mess_t_compte_cpt1_idx` (`cpt_id`);
+
+--
+-- Index pour la table `t_motif_mot`
+--
+ALTER TABLE `t_motif_mot`
+  ADD PRIMARY KEY (`motif_id`);
+
+--
+-- Index pour la table `t_participation_par`
+--
+ALTER TABLE `t_participation_par`
+  ADD PRIMARY KEY (`cpt_id`,`reu_id`),
+  ADD KEY `fk_t_association_asso_t_compte_cpt1_idx` (`cpt_id`),
+  ADD KEY `fk_t_association_asso_t_reunion_reu1_idx` (`reu_id`);
+
+--
+-- Index pour la table `t_profil_pfl`
+--
+ALTER TABLE `t_profil_pfl`
+  ADD PRIMARY KEY (`cpt_id`),
+  ADD UNIQUE KEY `pfl_email_UNIQUE` (`pfl_email`),
+  ADD KEY `fk_t_profil_pfl_t_ville_ville1_idx` (`ville_code_postal`);
+
+--
+-- Index pour la table `t_reservation_res`
+--
+ALTER TABLE `t_reservation_res`
+  ADD PRIMARY KEY (`res_id`),
+  ADD KEY `fk_t_reservation_res_t_ressource_ress1_idx` (`ress_id`);
+
+--
+-- Index pour la table `t_ressource_ress`
+--
+ALTER TABLE `t_ressource_ress`
+  ADD PRIMARY KEY (`ress_id`);
+
+--
+-- Index pour la table `t_reunion_reu`
+--
+ALTER TABLE `t_reunion_reu`
+  ADD PRIMARY KEY (`reu_id`);
+
+--
+-- Index pour la table `t_ville_ville`
+--
+ALTER TABLE `t_ville_ville`
+  ADD PRIMARY KEY (`ville_code_postal`);
+
+--
+-- AUTO_INCREMENT pour les tables déchargées
+--
+
+--
+-- AUTO_INCREMENT pour la table `t_actualite_actu`
+--
+ALTER TABLE `t_actualite_actu`
+  MODIFY `actu_id` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=12;
+
+--
+-- AUTO_INCREMENT pour la table `t_compte_cpt`
+--
+ALTER TABLE `t_compte_cpt`
+  MODIFY `cpt_id` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=266;
+
+--
+-- AUTO_INCREMENT pour la table `t_document_doc`
+--
+ALTER TABLE `t_document_doc`
+  MODIFY `doc_id` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=15;
+
+--
+-- AUTO_INCREMENT pour la table `t_indisponibilite_indis`
+--
+ALTER TABLE `t_indisponibilite_indis`
+  MODIFY `indis_id` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=11;
+
+--
+-- AUTO_INCREMENT pour la table `t_message_mess`
+--
+ALTER TABLE `t_message_mess`
+  MODIFY `mess_id` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=31;
+
+--
+-- AUTO_INCREMENT pour la table `t_motif_mot`
+--
+ALTER TABLE `t_motif_mot`
+  MODIFY `motif_id` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=11;
+
+--
+-- AUTO_INCREMENT pour la table `t_reservation_res`
+--
+ALTER TABLE `t_reservation_res`
+  MODIFY `res_id` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=59;
+
+--
+-- AUTO_INCREMENT pour la table `t_ressource_ress`
+--
+ALTER TABLE `t_ressource_ress`
+  MODIFY `ress_id` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=26;
+
+--
+-- AUTO_INCREMENT pour la table `t_reunion_reu`
+--
+ALTER TABLE `t_reunion_reu`
+  MODIFY `reu_id` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=6;
+
+--
+-- AUTO_INCREMENT pour la table `t_ville_ville`
+--
+ALTER TABLE `t_ville_ville`
+  MODIFY `ville_code_postal` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=75001;
+
+--
+-- Contraintes pour les tables déchargées
+--
+
+--
+-- Contraintes pour la table `t_actualite_actu`
+--
+ALTER TABLE `t_actualite_actu`
+  ADD CONSTRAINT `fk_t_actualite_actu_t_compte_cpt1` FOREIGN KEY (`cpt_id`) REFERENCES `t_compte_cpt` (`cpt_id`) ON DELETE NO ACTION ON UPDATE NO ACTION;
+
+--
+-- Contraintes pour la table `t_assosiaction_asso`
+--
+ALTER TABLE `t_assosiaction_asso`
+  ADD CONSTRAINT `fk_t_assosiaction_asso_t_indisponibilite_indis1` FOREIGN KEY (`indis_id`) REFERENCES `t_indisponibilite_indis` (`indis_id`) ON DELETE NO ACTION ON UPDATE NO ACTION,
+  ADD CONSTRAINT `fk_t_assosiaction_asso_t_ressource_ress1` FOREIGN KEY (`ress_id`) REFERENCES `t_ressource_ress` (`ress_id`) ON DELETE NO ACTION ON UPDATE NO ACTION;
+
+--
+-- Contraintes pour la table `t_document_doc`
+--
+ALTER TABLE `t_document_doc`
+  ADD CONSTRAINT `reu_id` FOREIGN KEY (`reu_id`) REFERENCES `t_reunion_reu` (`reu_id`) ON DELETE CASCADE ON UPDATE CASCADE;
+
+--
+-- Contraintes pour la table `t_indisponibilite_indis`
+--
+ALTER TABLE `t_indisponibilite_indis`
+  ADD CONSTRAINT `fk_t_indisponibilite_indis_t_motif_mot1` FOREIGN KEY (`motif_id`) REFERENCES `t_motif_mot` (`motif_id`) ON DELETE NO ACTION ON UPDATE NO ACTION;
+
+--
+-- Contraintes pour la table `t_inscription_ins`
+--
+ALTER TABLE `t_inscription_ins`
+  ADD CONSTRAINT `fk_t_ass_cpt_res_t_compte_cpt1` FOREIGN KEY (`cpt_id`) REFERENCES `t_compte_cpt` (`cpt_id`) ON DELETE NO ACTION ON UPDATE NO ACTION,
+  ADD CONSTRAINT `fk_t_ass_cpt_res_t_reservation_res1` FOREIGN KEY (`res_id`) REFERENCES `t_reservation_res` (`res_id`) ON DELETE NO ACTION ON UPDATE NO ACTION;
+
+--
+-- Contraintes pour la table `t_message_mess`
+--
+ALTER TABLE `t_message_mess`
+  ADD CONSTRAINT `fk_t_message_mess_t_compte_cpt1` FOREIGN KEY (`cpt_id`) REFERENCES `t_compte_cpt` (`cpt_id`) ON DELETE NO ACTION ON UPDATE NO ACTION;
+
+--
+-- Contraintes pour la table `t_participation_par`
+--
+ALTER TABLE `t_participation_par`
+  ADD CONSTRAINT `fk_t_association_asso_t_compte_cpt1` FOREIGN KEY (`cpt_id`) REFERENCES `t_compte_cpt` (`cpt_id`) ON DELETE NO ACTION ON UPDATE NO ACTION,
+  ADD CONSTRAINT `fk_t_association_asso_t_reunion_reu1` FOREIGN KEY (`reu_id`) REFERENCES `t_reunion_reu` (`reu_id`) ON DELETE NO ACTION ON UPDATE NO ACTION;
+
+--
+-- Contraintes pour la table `t_profil_pfl`
+--
+ALTER TABLE `t_profil_pfl`
+  ADD CONSTRAINT `cpt_id` FOREIGN KEY (`cpt_id`) REFERENCES `t_compte_cpt` (`cpt_id`) ON DELETE CASCADE ON UPDATE CASCADE,
+  ADD CONSTRAINT `vill_code_postale` FOREIGN KEY (`ville_code_postal`) REFERENCES `t_ville_ville` (`ville_code_postal`) ON DELETE CASCADE ON UPDATE CASCADE;
+
+--
+-- Contraintes pour la table `t_reservation_res`
+--
+ALTER TABLE `t_reservation_res`
+  ADD CONSTRAINT `fk_t_reservation_res_t_ressource_ress1` FOREIGN KEY (`ress_id`) REFERENCES `t_ressource_ress` (`ress_id`) ON DELETE NO ACTION ON UPDATE NO ACTION;
+COMMIT;
+
+/*!40101 SET CHARACTER_SET_CLIENT=@OLD_CHARACTER_SET_CLIENT */;
+/*!40101 SET CHARACTER_SET_RESULTS=@OLD_CHARACTER_SET_RESULTS */;
+/*!40101 SET COLLATION_CONNECTION=@OLD_COLLATION_CONNECTION */;
