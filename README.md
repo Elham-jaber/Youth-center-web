@@ -119,4 +119,4 @@ La base de données MySQL comprend :
 - Projet versionné sur GitHub
 
 
-📂 Le script SQL est disponible dans le dossier :
+ Le script SQL est disponible dans le dossier : database.
